@@ -29,7 +29,7 @@ when the container is down.
 
 ## Quick start (Docker)
 ```sh
-cp .env.example .env        # set MQTT_HOST / MQTT_USER / MQTT_PASSWORD
+cp .env.example .env        # optional: broker login, other settings
 docker compose up -d       # image: swilli23/pixel2mqtt (amd64 + arm64)
 ```
 Open `http://<server>:8466/`, go to **Displays**, click **Scan the network**, then **Adopt**.
@@ -38,8 +38,10 @@ The compose file uses `network_mode: host`. Discovery is a UDP broadcast on port
 UDP to port 7777 on the display. On a bridge network the broadcast can't reach the displays, so list them in
 `PIXEL_HOSTS` instead.
 
-Create a dedicated broker user for pixel2mqtt. With Mosquitto:
-`mosquitto_passwd /mosquitto/config/passwd pixel2mqtt`, then restart the broker.
+With host networking and a broker on the same machine, no settings are needed: pixel2mqtt connects to
+`localhost:1883`. If your broker requires a login, create a dedicated user (with Mosquitto:
+`mosquitto_passwd /mosquitto/config/passwd pixel2mqtt`, then restart the broker) and set `MQTT_USER` and
+`MQTT_PASSWORD`.
 
 ### Without Docker
 ```sh
@@ -81,7 +83,8 @@ These are environment variables. `.env` in the working directory and `data/.env`
 
 | Variable | Default | |
 |---|---|---|
-| `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASSWORD` (`MQTT_PASSWORD_FILE`) | –, 1883 | Without `MQTT_HOST`, pixel2mqtt runs as an editor only |
+| `MQTT_HOST`, `MQTT_PORT` | `localhost`, `1883` | `MQTT_HOST=none` runs pixel2mqtt as an editor only |
+| `MQTT_USER`, `MQTT_PASSWORD` (or `MQTT_PASSWORD_FILE`) | – | Only if the broker requires a login |
 | `PIXEL2MQTT_BASE` | `pixel2mqtt` | Base topic |
 | `HA_DISCOVERY_PREFIX` | `homeassistant` | |
 | `WEB_PORT` / `WEB_HOST` | `8466` / `0.0.0.0` | |

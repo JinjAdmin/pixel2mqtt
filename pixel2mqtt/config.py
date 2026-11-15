@@ -35,7 +35,11 @@ class Config:
         def get(env, fallback, default=""):
             return os.environ.get(env) or (fallback if fallback not in (None, "") else default)
 
-        self.mqtt_host = get("MQTT_HOST", mq.get("host"))
+        # default: a broker on the same host (network_mode: host, like zigbee2mqtt/govee2mqtt setups);
+        # MQTT_HOST=none runs pixel2mqtt as an editor only
+        self.mqtt_host = get("MQTT_HOST", mq.get("host"), "localhost")
+        if self.mqtt_host.lower() in ("none", "off", "disabled"):
+            self.mqtt_host = ""
         self.mqtt_port = int(get("MQTT_PORT", mq.get("port"), 1883))
         self.mqtt_user = get("MQTT_USER", mq.get("user"))
         pw = get("MQTT_PASSWORD", mq.get("password"))
