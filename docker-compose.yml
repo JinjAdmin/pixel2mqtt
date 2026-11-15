@@ -7,6 +7,13 @@ services:
     # host networking: LAN discovery uses UDP broadcast (port 7778) and live preview sends UDP to the
     # displays (port 7777). With a bridge network, list the displays in PIXEL_HOSTS instead.
     network_mode: host
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false     # every setting is optional
+    # Settings can also go here instead of .env, e.g.:
+    # environment:
+    #   MQTT_USER: pixel2mqtt
+    #   MQTT_PASSWORD: ${PIXEL2MQTT_MQTT_PASSWORD}
+    #   MQTT_CLIENT_ID: pixel2mqtt        # optional; default is random per start
     volumes:
       - ./data:/app/data

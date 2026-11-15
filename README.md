@@ -85,6 +85,7 @@ These are environment variables. `.env` in the working directory and `data/.env`
 |---|---|---|
 | `MQTT_HOST`, `MQTT_PORT` | `localhost`, `1883` | `MQTT_HOST=none` runs pixel2mqtt as an editor only |
 | `MQTT_USER`, `MQTT_PASSWORD` (or `MQTT_PASSWORD_FILE`) | – | Only if the broker requires a login |
+| `MQTT_CLIENT_ID` | random (`pixel2mqtt-xxxxxxxx`) | Fixed id, e.g. for broker ACLs or logs. Must be unique per instance |
 | `PIXEL2MQTT_BASE` | `pixel2mqtt` | Base topic |
 | `HA_DISCOVERY_PREFIX` | `homeassistant` | |
 | `WEB_PORT` / `WEB_HOST` | `8466` / `0.0.0.0` | |

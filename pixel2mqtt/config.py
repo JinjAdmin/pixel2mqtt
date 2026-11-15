@@ -41,6 +41,7 @@ class Config:
         if self.mqtt_host.lower() in ("none", "off", "disabled"):
             self.mqtt_host = ""
         self.mqtt_port = int(get("MQTT_PORT", mq.get("port"), 1883))
+        self.mqtt_client_id = get("MQTT_CLIENT_ID", mq.get("client_id"))  # empty: random per start
         self.mqtt_user = get("MQTT_USER", mq.get("user"))
         pw = get("MQTT_PASSWORD", mq.get("password"))
         pwf = os.environ.get("MQTT_PASSWORD_FILE")
