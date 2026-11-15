@@ -1,7 +1,7 @@
 services:
   pixel2mqtt:
-    build: .
-    image: pixel2mqtt:latest
+    image: swilli23/pixel2mqtt:latest
+    # build: .            # to build from this checkout instead
     container_name: pixel2mqtt
     restart: unless-stopped
     # host networking: LAN discovery uses UDP broadcast (port 7778) and live preview sends UDP to the

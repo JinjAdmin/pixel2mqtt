@@ -30,7 +30,7 @@ when the container is down.
 ## Quick start (Docker)
 ```sh
 cp .env.example .env        # set MQTT_HOST / MQTT_USER / MQTT_PASSWORD
-docker compose up -d --build
+docker compose up -d       # image: swilli23/pixel2mqtt (amd64 + arm64)
 ```
 Open `http://<server>:8099/`, go to **Displays**, click **Scan the network**, then **Adopt**.
 
@@ -106,6 +106,7 @@ through a reverse proxy without adding authentication there.
   - sounds are stored as they are, and the display decodes them on first play.
 
 ## Tests
+`python tests/test_offline.py` needs nothing else and runs in CI.
 `tests/run_pixeld_host.sh <govee-pixel-light dir> [<copy of a display's /usr/res>]` builds pixeld for x86-64
 with a stub panel. It then runs pixeld in an unprivileged user and network namespace with a fake root. The tests
 cover the API, pairing, uploads, events, the MQTT bridge (against a tiny in-process broker) and, optionally, the
