@@ -46,7 +46,7 @@ class Config:
         self.base = get("PIXEL2MQTT_BASE", f.get("base_topic"), "pixel2mqtt")
         self.discovery_prefix = get("HA_DISCOVERY_PREFIX", f.get("discovery_prefix"), "homeassistant")
         self.web_host = get("WEB_HOST", f.get("web_host"), "0.0.0.0")
-        self.web_port = int(get("WEB_PORT", f.get("web_port"), 8099))
+        self.web_port = int(get("WEB_PORT", f.get("web_port"), 8466))
         hosts = get("PIXEL_HOSTS", ",".join(f.get("hosts", [])))
         self.hosts = [h.strip() for h in hosts.split(",") if h.strip()]
         self.scan_interval = int(get("SCAN_INTERVAL", f.get("scan_interval"), 120))

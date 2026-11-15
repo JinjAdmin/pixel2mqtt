@@ -32,7 +32,7 @@ when the container is down.
 cp .env.example .env        # set MQTT_HOST / MQTT_USER / MQTT_PASSWORD
 docker compose up -d       # image: swilli23/pixel2mqtt (amd64 + arm64)
 ```
-Open `http://<server>:8099/`, go to **Displays**, click **Scan the network**, then **Adopt**.
+Open `http://<server>:8466/`, go to **Displays**, click **Scan the network**, then **Adopt**.
 
 The compose file uses `network_mode: host`. Discovery is a UDP broadcast on port 7778, and the live preview sends
 UDP to port 7777 on the display. On a bridge network the broadcast can't reach the displays, so list them in
@@ -84,7 +84,7 @@ These are environment variables. `.env` in the working directory and `data/.env`
 | `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASSWORD` (`MQTT_PASSWORD_FILE`) | –, 1883 | Without `MQTT_HOST`, pixel2mqtt runs as an editor only |
 | `PIXEL2MQTT_BASE` | `pixel2mqtt` | Base topic |
 | `HA_DISCOVERY_PREFIX` | `homeassistant` | |
-| `WEB_PORT` / `WEB_HOST` | `8099` / `0.0.0.0` | |
+| `WEB_PORT` / `WEB_HOST` | `8466` / `0.0.0.0` | |
 | `PIXEL_HOSTS` | – | Comma-separated display IPs (`ip` or `ip:port`) to probe directly |
 | `SCAN_INTERVAL` | `120` | Seconds between network scans. Scans also follow DHCP address changes. |
 
