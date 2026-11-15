@@ -1,7 +1,7 @@
 # pixel2mqtt
 
 A small bridge and web editor for **Govee H6631 52×32 pixel displays running custom firmware** (the `pixeld`
-daemon from the govee-pixel-light project). It works like zigbee2mqtt: one container talks to your MQTT
+daemon from [pixeld-h6631](https://github.com/SamWiIIiams/pixeld-h6631)). It works like zigbee2mqtt: one container talks to your MQTT
 broker and Home Assistant for any number of displays. You get:
 
 - **One MQTT login for every display.** pixel2mqtt publishes Home Assistant discovery and state for each display,
@@ -22,8 +22,8 @@ Everything you make is **saved on the display** (`.anim`, `.pxi` and sound files
 when the container is down.
 
 ## Requirements
-- One or more H6631 displays with the custom firmware and a `pixeld` that has the LAN API (`api: 1` in
-  `http://<display>/api/info`).
+- One or more H6631 displays running [pixeld-h6631](https://github.com/SamWiIIiams/pixeld-h6631) with the LAN
+  API (`api: 1` in `http://<display>/api/info`).
 - An MQTT broker (e.g. Mosquitto) and Home Assistant with the MQTT integration.
 - Docker, or Python ≥ 3.8 to run it directly. It uses no third-party packages.
 
@@ -111,7 +111,7 @@ through a reverse proxy without adding authentication there.
 
 ## Tests
 `python tests/test_offline.py` needs nothing else and runs in CI.
-`tests/run_pixeld_host.sh <govee-pixel-light dir> [<copy of a display's /usr/res>]` builds pixeld for x86-64
+`tests/run_pixeld_host.sh <pixeld-h6631 checkout> [<copy of a display's /usr/res>]` builds pixeld for x86-64
 with a stub panel. It then runs pixeld in an unprivileged user and network namespace with a fake root. The tests
 cover the API, pairing, uploads, events, the MQTT bridge (against a tiny in-process broker) and, optionally, the
 built-in artwork importer. On Linux it needs `zig` and `unshare`.
@@ -119,3 +119,6 @@ built-in artwork importer. On Linux it needs `zig` and `unshare`.
 ## Artwork and licences
 Govee's artwork belongs to Govee. pixel2mqtt never ships it, and the `.gitignore` blocks converted files.
 Imported artwork stays on your own display.
+
+## Licence
+MIT (see [LICENSE](LICENSE)). Govee artwork is not covered and is never included.

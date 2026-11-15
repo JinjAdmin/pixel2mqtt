@@ -1,4 +1,4 @@
-"""Client for pixeld's LAN API (see govee-pixel-light/src/api.c) plus LAN discovery and UDP frames."""
+"""Client for pixeld's LAN API (see pixeld-h6631: src/api.c, docs/API.md) plus LAN discovery and UDP frames."""
 import http.client
 import json
 import socket

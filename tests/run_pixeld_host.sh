@@ -1,8 +1,8 @@
 #!/bin/sh
-# Host test: build pixeld (from ../govee-pixel-light/src) for x86_64 with a stub panel and run it in an
+# Host test: build pixeld (from a pixeld-h6631 checkout) for x86_64 with a stub panel and run it in an
 # unprivileged user+mount+network namespace with a fake root, then run tests/test_host.py against it.
 #
-#   tests/run_pixeld_host.sh <govee-pixel-light dir> [<usr/res mirror dir>]
+#   tests/run_pixeld_host.sh <pixeld-h6631 dir> [<usr/res mirror dir>]
 #
 # Needs: zig (ZIG env var, default ~/zig/zig), util-linux unshare, iproute2, python3 >= 3.8.
 # The optional mirror is a copy of a display's /usr/res (stock artwork: keep it private). With it, the

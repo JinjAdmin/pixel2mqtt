@@ -1,6 +1,6 @@
-"""Converters shared with govee-pixel-light/tools (pure Python, no dependencies).
+"""Converters shared with pixeld-h6631/tools (pure Python, no dependencies).
 
-anim_convert.py, graffiti.py, minipng.py, icon_pack.py are copies of the tools in the govee-pixel-light
+anim_convert.py, graffiti.py, minipng.py, icon_pack.py are copies of the tools in the pixeld-h6631
 project. They contain code only: no artwork. Keep them in sync when the tools change.
 """
 import pathlib

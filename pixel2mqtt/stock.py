@@ -107,7 +107,7 @@ def anim_bytes(stock: bytes) -> bytes:
 
 
 def icon_bytes(stock: bytes) -> bytes:
-    # same as govee-pixel-light/tools/icon_pack.py: GIF black = transparent, PNGs keep their alpha, no resizing
+    # same as pixeld-h6631/tools/icon_pack.py: GIF black = transparent, PNGs keep their alpha, no resizing
     return formats.pxi(formats.decode(stock, black_transparent=True))
 
 
