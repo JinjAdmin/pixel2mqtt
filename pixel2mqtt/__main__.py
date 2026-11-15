@@ -3,6 +3,7 @@ import logging
 import os
 import signal
 import threading
+import uuid
 
 from . import __version__
 from .bridge import Manager
@@ -21,7 +22,7 @@ def main():
     mgr = Manager(cfg, store)
     mqtt = None
     if cfg.mqtt_host:
-        mqtt = MQTTClient(cfg.mqtt_host, cfg.mqtt_port, cfg.mqtt_user, cfg.mqtt_password, client_id=f"{cfg.base}-bridge",
+        mqtt = MQTTClient(cfg.mqtt_host, cfg.mqtt_port, cfg.mqtt_user, cfg.mqtt_password, client_id=f"{cfg.base}-{uuid.uuid4().hex[:8]}",  # unique: two copies must not kick each other off
                           will=(f"{cfg.base}/bridge/state", "offline", True))
     else:
         log.warning("MQTT_HOST not set: running as editor only (no Home Assistant bridge)")

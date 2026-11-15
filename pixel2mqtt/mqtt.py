@@ -150,8 +150,8 @@ class MQTTClient:
                 self._stop.wait(backoff)
                 backoff = min(backoff * 2, 60)
                 continue
-            backoff = 2
             self.connected, self.last_error = True, ""
+            since = time.time()
             log.info("MQTT connected to %s:%s", self.host, self.port)
             try:
                 if self._subs:
@@ -164,6 +164,12 @@ class MQTTClient:
                     log.warning("MQTT connection lost: %s", e)
             finally:
                 self.connected = False
+                if time.time() - since > 30:
+                    backoff = 2          # a healthy session: reconnect quickly
+                else:                    # dropped right away (e.g. another client with our id): back off
+                    self.last_error = "connection closed by the broker right after connecting"
+                    self._stop.wait(backoff)
+                    backoff = min(backoff * 2, 60)
                 with self._lock:
                     try:
                         self._sock.close()
