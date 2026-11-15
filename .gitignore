@@ -1,0 +1,9 @@
+# secrets and runtime state (devices.json holds the display API tokens)
+.env
+data/
+*.pyc
+__pycache__/
+# never commit display artwork (Govee's stock files or anything converted from them)
+*.anim
+*.pxi
+*.clock

@@ -1,0 +1,12 @@
+services:
+  pixel2mqtt:
+    build: .
+    image: pixel2mqtt:latest
+    container_name: pixel2mqtt
+    restart: unless-stopped
+    # host networking: LAN discovery uses UDP broadcast (port 7778) and live preview sends UDP to the
+    # displays (port 7777). With a bridge network, list the displays in PIXEL_HOSTS instead.
+    network_mode: host
+    env_file: .env
+    volumes:
+      - ./data:/app/data
