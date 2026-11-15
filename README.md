@@ -9,14 +9,33 @@ broker and Home Assistant for any number of displays. You get:
 - **A web editor:**
   - upload GIFs, PNGs (or any image the browser can open) and MP3/WAV/OGG sounds;
   - browse each display's animations, icons and sounds, with previews, then play or delete them;
-  - draw on a 52×32 canvas and drag icons around on it;
-  - draw new icons and add them to the icon library;
+  - a **layered animation editor** (see below);
+  - draw new icons, including animated ones, and add them to the icon library;
   - see each display's free storage;
   - with **Live on display**, the real panel shows the canvas at about 30 fps while you edit.
 - **Built-in artwork import.** One button converts the animations and icons that ship inside the display's own
   firmware (59 animations including 4 clock scenes, plus about 85 icons). The conversion uses a scene renderer
   tuned on real hardware: motion direction, layer order, static items and seamless loops.
   *pixel2mqtt contains no artwork.* It reads the files from your own display and writes the results back to it.
+
+### Animation editor
+Animations are built from **layers** (top of the list = drawn on top). Each layer has:
+- its own pixels, any size up to 256×256 (bigger than the screen for scrolling backgrounds);
+- one or more **frames**, each with its own duration (frame strip under the canvas, with onion skin);
+- a position, plus **motion** (direction pad and speed in px/s) and **tiling** (the layer wraps around while it
+  moves, like Govee's scrolling skies);
+- **opacity** and **blink** (on/off every N ms).
+
+Add layers as blank, from an image or GIF (GIF frames become layer frames), from an icon, or from the display's
+current frame. ▶ plays the scene, and **Live on display** shows it on the panel while you edit.
+
+**Save** stores the scene (reopen it later from *Open*) and bakes it into a seamless loop on the display. Every
+moving layer's speed is nudged so that it wraps a whole number of times per loop. The result appears in Home
+Assistant's Animation list.
+
+**Open** also works on any animation on the display. The built-in Govee scenes (Coffee Cat, Banana, Lighthouse,
+Starry Night, …) open as their real layers with their motion settings, so they're easy to remix. Saving one
+unchanged reproduces the stock animation exactly; `tests/verify_stock_scenes.py` checks this for all 59.
 
 Everything you make is **saved on the display** (`.anim`, `.pxi` and sound files), so the displays keep working
 when the container is down.
@@ -110,7 +129,9 @@ through a reverse proxy without adding authentication there.
   - sounds are stored as they are, and the display decodes them on first play.
 
 ## Tests
-`python tests/test_offline.py` needs nothing else and runs in CI.
+`python tests/test_offline.py` and `node tests/test_scene.js` need nothing else and run in CI.
+`tests/verify_stock_scenes.py <copy of /usr/res>` (local, needs the stock files) checks that every built-in animation
+opened as layers bakes byte-identically.
 `tests/run_pixeld_host.sh <pixeld-h6631 checkout> [<copy of a display's /usr/res>]` builds pixeld for x86-64
 with a stub panel. It then runs pixeld in an unprivileged user and network namespace with a fake root. The tests
 cover the API, pairing, uploads, events, the MQTT bridge (against a tiny in-process broker) and, optionally, the

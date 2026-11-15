@@ -22,7 +22,9 @@ jobs:
       - name: Offline tests (converters, formats, topic rewriting)
         run: python tests/test_offline.py
       - name: Web editor syntax check
-        run: node --check pixel2mqtt/static/app.js
+        run: for f in pixel2mqtt/static/*.js; do node --check "$f"; done
+      - name: Scene model / renderer tests
+        run: node tests/test_scene.js
 
   publish:
     needs: test

@@ -10,7 +10,7 @@ import urllib.parse
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import formats, stock
+from . import formats, scenes, stock
 from .device import FRAME_BYTES, APIError, send_frame
 
 log = logging.getLogger("web")
@@ -71,6 +71,8 @@ class FileCache:
 
 def make_handler(mgr, config):
     jobs, cache = Jobs(), FileCache()
+    store = scenes.SceneStore(config.data_dir)
+    stock_src = {name: src for src, name, _ in stock.ANIMATIONS}
 
     class H(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -125,6 +127,9 @@ def make_handler(mgr, config):
         def do_DELETE(self):
             self.route("DELETE")
 
+        def do_PUT(self):
+            self.route("PUT")
+
         def route(self, method):
             url = urllib.parse.urlsplit(self.path)
             parts = [urllib.parse.unquote(p) for p in url.path.strip("/").split("/") if p]
@@ -170,6 +175,18 @@ def make_handler(mgr, config):
                 b = self.jbody()
                 d = mgr.adopt_confirm(b["host"], b["code"], b.get("name"), b.get("topic"), b.get("uid"), bool(b.get("keep_legacy")))
                 return self.send(200, d.public())
+            if p == ["scenes"] and m == "GET":
+                return self.send(200, store.list())
+            if p[:1] == ["scenes"] and len(p) == 2:
+                if m == "GET":
+                    return self.send(200, store.get(p[1]))
+                if m in ("PUT", "POST"):
+                    return self.send(200, {"ok": True, "name": store.put(p[1], self.body())})
+                if m == "DELETE":
+                    store.delete(p[1])
+                    return self.send(200, {"ok": True})
+            if p == ["layer-frames"] and m == "POST":  # image/GIF -> frames for a new editor layer
+                return self.send(200, {"frames": scenes.decode_layer_frames(self.body(), int(q.get("max", 256)))})
             if p[:1] == ["jobs"] and len(p) == 2:
                 return self.send(200, jobs.jobs[p[1]])
             if p[:1] == ["displays"] and len(p) >= 2:
@@ -195,6 +212,15 @@ def make_handler(mgr, config):
             if p[:1] == ["cmd"] and len(p) == 2 and m == "POST":
                 api.cmd(p[1], self.body())
                 return self.send(200, {"ok": True})
+            if p == ["scene"] and m == "GET":  # open a display animation as editable layers
+                name = q.get("anim", "")
+                src = stock_src.get(name)
+                if src:  # a built-in: rebuild its layers from the stock file on the display
+                    try:
+                        return self.send(200, json.dumps(scenes.scene_from_stock(api.res(f"{stock.RES}/{src}"))))
+                    except APIError:
+                        pass  # stock file missing on this display: fall back to the baked frames
+                return self.send(200, json.dumps(scenes.scene_from_pxa(api.get_file("anims", name + ".anim"))))
             if p == ["import-stock"] and m == "POST":
                 b = self.jbody()
                 job = jobs.start("Import built-in animations and icons",

@@ -32,14 +32,14 @@
       <button data-tool="line" title="Line (L)">╱</button>
       <button data-tool="rect" title="Rectangle (R)">▭</button>
       <button data-tool="pick" title="Pick colour (I)">⊙</button>
-      <button data-tool="move" title="Move icons (M)">✥</button>
+      <button data-tool="move" title="Move layer (M)">✥</button>
       <hr>
       <button id="undoBtn" title="Undo (Ctrl+Z)">↶</button>
       <button id="redoBtn" title="Redo (Ctrl+Y)">↷</button>
     </div>
     <div class="stage">
       <div class="stagebar">
-        <label class="seg"><input type="radio" name="emode" value="panel" checked> Panel 52×32</label>
+        <label class="seg"><input type="radio" name="emode" value="anim" checked> Animation 52×32</label>
         <label class="seg"><input type="radio" name="emode" value="icon"> Icon</label>
         <span id="iconSize" class="hidden">
           <input id="iconW" type="number" min="1" max="52" value="16"> × <input id="iconH" type="number" min="1" max="32" value="16">
@@ -49,7 +49,22 @@
         <label class="toggle" title="Stream the canvas to the display at ~30 fps"><input id="liveChk" type="checkbox"> <b>Live on display</b></label>
       </div>
       <div class="canvaswrap"><canvas id="cv"></canvas></div>
-      <div class="stagebar small"><span id="cursorPos">–</span><span class="grow"></span><span id="liveInfo"></span></div>
+      <div class="playbar">
+        <button id="playBtn" title="Play / pause (Space)">▶</button>
+        <input id="timeSlider" type="range" min="0" max="1000" value="0" step="1">
+        <span id="timeLabel" class="small muted">0.00 s</span>
+        <label class="small" title="Show the previous frame of this layer faintly"><input id="onionChk" type="checkbox" checked> onion skin</label>
+        <span class="grow"></span><span id="cursorPos" class="small muted">–</span><span id="liveInfo" class="small muted"></span>
+      </div>
+      <div class="card frames">
+        <div class="row"><b>Frames</b><span id="framesOf" class="muted small"></span><span class="grow"></span>
+          <button id="frAdd" title="New blank frame after this one">+ blank</button>
+          <button id="frDup" title="Duplicate this frame">⧉ duplicate</button>
+          <button id="frLeft" title="Move frame earlier">◀</button><button id="frRight" title="Move frame later">▶</button>
+          <button id="frDel" title="Delete this frame">✕</button>
+        </div>
+        <div id="frameStrip" class="strip"></div>
+      </div>
     </div>
     <aside class="side">
       <div class="card">
@@ -57,26 +72,45 @@
         <div class="row"><input id="color" type="color" value="#ff8800"><span id="colorHex">#ff8800</span></div>
         <div id="palette" class="palette"></div>
       </div>
-      <div class="card" id="iconCard">
-        <h3>Icons</h3>
-        <div class="row"><select id="iconSel"></select><button id="addIcon" title="Place on the canvas">Add</button></div>
-        <div id="objList" class="objlist"></div>
-        <p class="hint">Drag icons with the ✥ tool. Delete removes the selected one.</p>
+      <div class="card">
+        <h3>Layers <span class="muted small">(top first)</span></h3>
+        <div id="layerList" class="layerlist"></div>
+        <div class="btns">
+          <button id="lyNew" title="New blank layer">+ New</button>
+          <label class="btnlike" title="Add an image or GIF as a layer (GIF frames become layer frames)">+ Image<input id="lyImg" type="file" accept="image/*" hidden></label>
+          <button id="lyDup" title="Duplicate layer">⧉</button>
+          <button id="lyUp" title="Move up">▲</button><button id="lyDown" title="Move down">▼</button>
+          <button id="lyDel" title="Delete layer">✕</button>
+        </div>
+        <div class="row"><select id="iconSel"></select><button id="addIcon" title="Add this icon as a layer">+ Icon</button></div>
+      </div>
+      <div class="card" id="propsCard">
+        <h3>Layer</h3>
+        <label class="prop">Name <input id="pName"></label>
+        <div class="prop2"><label>X <input id="pX" type="number"></label><label>Y <input id="pY" type="number"></label></div>
+        <div class="prop2"><label>W <input id="pW" type="number" min="1" max="256"></label><label>H <input id="pH" type="number" min="1" max="256"></label><button id="pResize">Resize</button></div>
+        <label class="chk"><input id="pTile" type="checkbox"> Tile (wrap around while moving)</label>
+        <div class="motion">
+          <div class="dirpad" id="dirPad"></div>
+          <div class="motionprops">
+            <label>Speed <input id="pSpeed" type="range" min="0" max="100" step="1"> <span id="pSpeedV" class="small"></span></label>
+            <label>Opacity <input id="pOpacity" type="range" min="0" max="100" step="1"> <span id="pOpacityV" class="small"></span></label>
+            <label>Blink <input id="pBlink" type="number" min="0" max="10000" step="50"> ms <span class="muted small">(0 = off)</span></label>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Scene</h3>
+        <div class="row"><label>Background <input id="bgColor" type="color" value="#000000"></label><label class="small" id="bgNoneWrap"><input id="bgNone" type="checkbox"> transparent</label></div>
+        <div class="row"><select id="openSel"></select><button id="openBtn" title="Open as layers">Open</button><button id="newBtn" title="Start a new empty scene">New</button></div>
+        <div class="row"><input id="saveName" placeholder="name"><button id="saveBtn" class="primary">Save</button></div>
+        <p class="hint" id="saveHint"></p>
+        <div class="btns"><button id="grabBtn" title="Add the display's current frame as a layer">Layer from display</button><button id="pngBtn">Export PNG</button><button id="delSceneBtn" title="Delete the saved scene with this name (not the animation on the display)">Delete saved scene</button></div>
       </div>
       <div class="card">
         <h3>On the display</h3>
         <div class="row"><select id="animSel"></select><button id="playAnim" title="Play this animation on the display">▶</button></div>
         <div class="row"><select id="soundSel"></select><button id="playSound" title="Play this sound on the display">♪</button></div>
-      </div>
-      <div class="card">
-        <h3>Canvas</h3>
-        <div class="btns">
-          <button id="clearBtn">Clear</button>
-          <button id="grabBtn" title="Copy the display's current frame onto the canvas">Load from display</button>
-          <button id="pngBtn">Export PNG</button>
-        </div>
-        <div class="row"><input id="saveName" placeholder="name"><button id="saveBtn" class="primary">Save</button></div>
-        <p class="hint" id="saveHint">Saved as an animation on the display (it then appears in Home Assistant's Animation list).</p>
       </div>
     </aside>
   </div>
@@ -141,6 +175,8 @@
   </form>
 </dialog>
 <div id="toast"></div>
+<script src="/scene.js"></script>
 <script src="/app.js"></script>
+<script src="/editor.js"></script>
 </body>
 </html>
