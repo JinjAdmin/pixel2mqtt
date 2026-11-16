@@ -73,7 +73,7 @@ The **Layer** panel holds the selected layer's settings:
 - **Name**
 - **X / Y** position
 - **W / H** size, changed with **Crop / extend** (keeps the pixels) or **Scale** (resizes them)
-- **Tile**, which repeats the layer
+- **Tile**, which wraps the layer around while it moves
 - **Motion**, a direction and speed that scrolls the layer, for example clouds or rain
 - **Opacity**
 - **Blink**, which switches the layer on and off at a set interval
@@ -97,7 +97,7 @@ Each layer has its own frames, so a spinning object and a still background can s
 
 ![Icon project](guide/icon.png)
 
-An icon project is a single small image (8×8 to 32×32) for info screens and notifications. Animation-only controls such as motion, blink and the live preview are hidden. To change the icon's size, use **⋮ → Icon size**.
+An icon project is a single small image (8×8 to 32×32) for info screens and notifications. Animation-only controls such as motion, blink and the live preview are hidden. To change the icon's size, use **⋮ → Change icon size…**.
 
 ## Testing
 
