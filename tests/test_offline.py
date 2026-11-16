@@ -94,5 +94,25 @@ d.online = False
 m._on_message("pixel2mqtt/desk/status", b"offline", True)
 check(m.mqtt.pubs == [], "real offline / own online left alone")
 
+# renames: remembered per display, chained, and applied to import jobs
+from pixel2mqtt import renames as renames_mod  # noqa: E402
+with tempfile.TemporaryDirectory() as td:
+    r = renames_mod.Renames(pathlib.Path(td))
+    r.record("dev", "anims", "App 1234abcd", "Night Train")
+    r.record("dev", "anims", "Night Train", "Night Train 2")
+    check(r.for_display("dev", "anims") == {"App 1234abcd": "Night Train 2"}, "rename chain keeps the original")
+    check(r.original("dev", "anims", "Night Train 2") == "App 1234abcd", "original name lookup")
+    r.record("dev", "anims", "Night Train 2", "App 1234abcd")
+    check(r.for_display("dev", "anims") == {}, "renaming back forgets the entry")
+
+
+class NoRes:
+    def res(self, path):
+        raise RuntimeError("404")
+
+
+names = [f for k, f, _ in stock.plan(NoRes(), {"Dragon": "My Dragon"}) if k == "anims"]
+check("My Dragon.anim" in names and "Dragon.anim" not in names, "import writes renamed animations under the new name")
+
 print(f"\n{len(fails)} failure(s)" if fails else "\nALL PASSED")
 sys.exit(1 if fails else 0)

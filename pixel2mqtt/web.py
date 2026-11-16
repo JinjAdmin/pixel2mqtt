@@ -10,7 +10,7 @@ import urllib.parse
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import formats, scenes, stock
+from . import renames as renames_mod, formats, scenes, stock
 from .device import FRAME_BYTES, APIError, send_frame
 
 log = logging.getLogger("web")
@@ -72,6 +72,7 @@ class FileCache:
 def make_handler(mgr, config):
     jobs, cache = Jobs(), FileCache()
     store = scenes.SceneStore(config.data_dir)
+    renames = renames_mod.Renames(config.data_dir)
     stock_src = {name: src for src, name, _ in stock.ANIMATIONS}
 
     class H(BaseHTTPRequestHandler):
@@ -213,7 +214,7 @@ def make_handler(mgr, config):
                 api.cmd(p[1], self.body())
                 return self.send(200, {"ok": True})
             if p == ["scene"] and m == "GET":  # open a display animation as editable layers
-                name = q.get("anim", "")
+                name = renames.original(d.id, "anims", q.get("anim", ""))
                 src = stock_src.get(name)
                 if src:  # a built-in: rebuild its layers from the stock file on the display
                     try:
@@ -227,12 +228,34 @@ def make_handler(mgr, config):
                             return self.send(200, json.dumps(scenes.scene_from_stock(data)))
                         except Exception:  # noqa: BLE001 - not convertible as layers: use the baked frames
                             pass
-                return self.send(200, json.dumps(scenes.scene_from_pxa(api.get_file("anims", name + ".anim"))))
+                return self.send(200, json.dumps(scenes.scene_from_pxa(api.get_file("anims", q.get("anim", "") + ".anim"))))
             if p == ["import-stock"] and m == "POST":
                 b = self.jbody()
                 job = jobs.start("Import built-in animations and icons",
-                                 lambda prog: stock.run(api, prog, overwrite=bool(b.get("overwrite"))))
+                                 lambda prog: stock.run(api, prog, overwrite=bool(b.get("overwrite")),
+                                                        renames=renames.for_display(d.id, "anims")))
                 return self.send(200, job)
+            if p == ["rename"] and m == "POST":  # {"name": "Old.anim", "new": "New name"} (animations)
+                b = self.jbody()
+                old = b.get("name", "")
+                if not old.endswith(".anim"):
+                    raise ValueError("only animations can be renamed")
+                new = formats.safe_name(b.get("new", ""))
+                if new == old[:-5]:
+                    return self.send(200, {"ok": True, "name": old})
+                have = {f["name"] for f in api.files("anims")}
+                if old not in have:
+                    raise KeyError(f"no animation {old}")
+                if new + ".anim" in have:
+                    raise ValueError(f"an animation called {new} already exists")
+                api.put_file("anims", new + ".anim", api.get_file("anims", old))
+                if old[:-5] + ".clock" in have:   # clock-position sidecar moves with it
+                    api.put_file("anims", new + ".clock", api.get_file("anims", old[:-5] + ".clock"))
+                    api.delete_file("anims", old[:-5] + ".clock")
+                api.delete_file("anims", old)
+                cache.drop(d.id, "anims", old)
+                renames.record(d.id, "anims", old[:-5], new)
+                return self.send(200, {"ok": True, "name": new + ".anim"})
             if p == ["upload"] and m == "POST":
                 return self.upload(d, q)
             if p[:1] == ["files"] and len(p) >= 2:

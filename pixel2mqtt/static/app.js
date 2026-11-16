@@ -136,6 +136,7 @@ function renderLibrary() {
     el("span", { cls: "s" }, fmtBytes(f.size)),
     el("button", { title: "Play on the display", onclick: () => cmd("animation", stem(f.name)) }, "▶"),
     el("button", { title: "Open in the editor (as layers when possible)", onclick: () => { Editor.openAnim(stem(f.name)); showTab("editor"); } }, "✎"),
+    el("button", { title: "Rename (a re-import keeps the new name)", onclick: () => renameAnim(f.name) }, "Aa"),
     el("button", { title: "Delete from the display", onclick: () => delFile("anims", f.name) }, "✕"))));
   const grid = $("#iconGrid"); grid.replaceChildren();
   for (const f of lib.icons) {
@@ -169,6 +170,12 @@ async function previewAnim(f) {
 async function cmd(name, payload) {
   if (!cur) return toast("Adopt a display first", true);
   try { await api(`/displays/${cur}/cmd/${name}`, { method: "POST", body: payload }); toast(`${name}: ${payload}`); } catch (e) { toast(e.message, true); }
+}
+async function renameAnim(name) {
+  const n = prompt("New name for " + stem(name), stem(name));
+  if (n === null || !n.trim() || n.trim() === stem(name)) return;
+  try { const r = await postJSON(`/displays/${cur}/rename`, { name, new: n.trim() }); toast("Renamed to " + stem(r.name)); await loadLibrary(); }
+  catch (e) { toast(e.message, true); }
 }
 async function delFile(kind, name) {
   if (!confirm(`Delete ${name} from the display? This can't be undone.`)) return;

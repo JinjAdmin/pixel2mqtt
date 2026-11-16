@@ -153,7 +153,7 @@ def app_scenes(api, skip=()):
     return out
 
 
-def plan(api):
+def plan(api, renames=None):
     """List of (kind, device file name, fetch-and-convert callable) for everything importable from this device."""
     jobs = []
     builtin = set()
@@ -185,15 +185,18 @@ def plan(api):
                 jobs.append(("icons", icon + ".pxi", lambda p=f"{SM}/{d}/{n}": icon_bytes(api.res(p))))
     for name, data in app_scenes(api, skip=builtin).items():   # app copies of built-ins are left out
         jobs.append(("anims", name + ".anim", lambda b=data: anim_bytes(b)))
+    if renames:  # animations the user renamed are written under their new name
+        jobs = [(k, (renames.get(f.rsplit(".", 1)[0], f.rsplit(".", 1)[0]) + "." + f.rsplit(".", 1)[1]) if k == "anims" else f, mk)
+                for k, f, mk in jobs]
     return jobs
 
 
-def run(api, progress=None, overwrite=False):
+def run(api, progress=None, overwrite=False, renames=None):
     """Import everything. progress(done, total, message). Returns {"imported": n, "skipped": n, "failed": [..]}."""
     existing = {}
     for kind in ("anims", "icons"):
         existing[kind] = {f["name"] for f in api.files(kind)}
-    jobs = plan(api)
+    jobs = plan(api, renames)
     res = {"imported": 0, "skipped": 0, "failed": []}
     for i, (kind, name, make) in enumerate(jobs):
         if progress:
