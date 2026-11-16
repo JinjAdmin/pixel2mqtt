@@ -20,8 +20,31 @@ def _load_dotenv(path: pathlib.Path):
         os.environ.setdefault(k.strip(), v)
 
 
+ADDON_OPTIONS = pathlib.Path("/data/options.json")
+INGRESS_PROXY = "172.30.32.2"   # Home Assistant Supervisor's Ingress proxy
+
+
+def _supervisor_mqtt():
+    """Home Assistant add-on: the MQTT broker login the Supervisor hands out (Mosquitto add-on), or {}."""
+    import urllib.request
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        return {}
+    req = urllib.request.Request("http://supervisor/services/mqtt", headers={"Authorization": "Bearer " + token})
+    try:
+        d = json.loads(urllib.request.urlopen(req, timeout=10).read()).get("data") or {}
+    except (OSError, ValueError):
+        return {}
+    return {"host": d.get("host", ""), "port": d.get("port", 1883), "user": d.get("username", ""),
+            "password": d.get("password", "")}
+
+
 class Config:
     def __init__(self):
+        # Home Assistant add-on mode: options from /data/options.json, MQTT login from the Supervisor, data in /data
+        self.addon = bool(os.environ.get("SUPERVISOR_TOKEN")) and ADDON_OPTIONS.is_file()
+        if self.addon and ADDON_OPTIONS == pathlib.Path("/data/options.json"):
+            os.environ["PIXEL2MQTT_DATA"] = "/data"   # the add-on's persistent folder (the image defaults to /app/data)
         _load_dotenv(pathlib.Path(".env"))
         self.data_dir = pathlib.Path(os.environ.get("PIXEL2MQTT_DATA", "data"))
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -30,6 +53,16 @@ class Config:
         cf = self.data_dir / "config.json"
         if cf.is_file():
             f = json.loads(cf.read_text(encoding="utf-8"))
+        if self.addon:
+            o = json.loads(ADDON_OPTIONS.read_text(encoding="utf-8"))
+            f = dict(f)
+            for k in ("base_topic", "discovery_prefix", "hosts", "scan_interval"):
+                if o.get(k) not in (None, "", []):
+                    f[k] = o[k]
+            # an explicit broker in the options wins over the Mosquitto add-on
+            manual = {k: o.get("mqtt_" + k) for k in ("host", "port", "user", "password") if o.get("mqtt_" + k)}
+            f["mqtt"] = manual if manual.get("host") else _supervisor_mqtt()
+            self.allow_direct = bool(o.get("allow_direct_access"))
         mq = f.get("mqtt", {})
 
         def get(env, fallback, default=""):
@@ -55,6 +88,10 @@ class Config:
         hosts = get("PIXEL_HOSTS", ",".join(f.get("hosts", [])))
         self.hosts = [h.strip() for h in hosts.split(",") if h.strip()]
         self.scan_interval = int(get("SCAN_INTERVAL", f.get("scan_interval"), 120))
+        # add-on: the web UI is only reachable through Home Assistant (Ingress) unless the user opts in
+        self.allowed_clients = None
+        if self.addon and not self.allow_direct:
+            self.allowed_clients = {INGRESS_PROXY, "127.0.0.1", "::1"}
 
     def describe(self):
         return {"mqtt": f"{self.mqtt_user + '@' if self.mqtt_user else ''}{self.mqtt_host}:{self.mqtt_port}" if self.mqtt_host else "disabled",

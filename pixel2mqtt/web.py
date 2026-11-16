@@ -132,6 +132,10 @@ def make_handler(mgr, config):
             self.route("PUT")
 
         def route(self, method):
+            allowed = getattr(config, "allowed_clients", None)
+            if allowed is not None and self.client_address[0] not in allowed:
+                self.close_connection = True   # any request body stays unread
+                return self.err(403, "open pixel2mqtt from Home Assistant (sidebar), or enable allow_direct_access")
             url = urllib.parse.urlsplit(self.path)
             parts = [urllib.parse.unquote(p) for p in url.path.strip("/").split("/") if p]
             q = {k: v[0] for k, v in urllib.parse.parse_qs(url.query).items()}

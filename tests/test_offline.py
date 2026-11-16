@@ -137,5 +137,34 @@ r = stock.dedupe(fa)
 check(r["removed"] == ["Copy of Rings.anim"] and r["kept"]["Copy of Rings.anim"] == "Blue Rings.anim"
       and sorted(fa.f) == ["App 2222.anim", "Blue Rings.anim", "Blue Rings.clock", "Other.anim"], "full dedupe keeps one per group")
 
+# Home Assistant add-on mode: options file, Supervisor MQTT login, Ingress-only access
+import os  # noqa: E402
+from pixel2mqtt import config as config_mod  # noqa: E402
+with tempfile.TemporaryDirectory() as td:
+    opts = pathlib.Path(td) / "options.json"
+    opts.write_text(json.dumps({"base_topic": "p2m", "allow_direct_access": False, "mqtt_host": ""}))
+    saved = (config_mod.ADDON_OPTIONS, config_mod._supervisor_mqtt, dict(os.environ))
+    config_mod.ADDON_OPTIONS = opts
+    config_mod._supervisor_mqtt = lambda: {"host": "core-mosquitto", "port": 1883, "user": "addons", "password": "x"}
+    for k in ("MQTT_HOST", "MQTT_PORT", "MQTT_USER", "MQTT_PASSWORD", "PIXEL2MQTT_BASE", "PIXEL2MQTT_DATA"):
+        os.environ.pop(k, None)
+    os.environ["SUPERVISOR_TOKEN"] = "test"
+    os.environ["PIXEL2MQTT_DATA"] = str(pathlib.Path(td) / "data")
+    cwd = os.getcwd()
+    os.chdir(td)   # no stray .env from the working directory
+    try:
+        c = config_mod.Config()
+        check(c.addon and c.mqtt_host == "core-mosquitto" and c.mqtt_user == "addons" and c.base == "p2m",
+              "add-on: options and the Supervisor's MQTT login are used")
+        check(c.allowed_clients == {"172.30.32.2", "127.0.0.1", "::1"}, "add-on: web UI only via Ingress by default")
+        opts.write_text(json.dumps({"allow_direct_access": True, "mqtt_host": "10.0.0.5", "mqtt_user": "me"}))
+        c = config_mod.Config()
+        check(c.allowed_clients is None and c.mqtt_host == "10.0.0.5" and c.mqtt_user == "me",
+              "add-on: direct access and a manual broker can be chosen")
+    finally:
+        os.chdir(cwd)
+        config_mod.ADDON_OPTIONS, config_mod._supervisor_mqtt = saved[0], saved[1]
+        os.environ.clear(); os.environ.update(saved[2])
+
 print(f"\n{len(fails)} failure(s)" if fails else "\nALL PASSED")
 sys.exit(1 if fails else 0)

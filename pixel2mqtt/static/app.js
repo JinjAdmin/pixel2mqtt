@@ -5,7 +5,7 @@ const PW = 52, PH = 32, FRAME = PW * PH * 3;
 
 /* ------------------------------------------------------------------ helpers */
 async function api(path, opts = {}) {
-  const r = await fetch("/api" + path, opts);
+  const r = await fetch("api" + path, opts);   // relative: also works under Home Assistant Ingress
   if (!r.ok) {
     let m = r.status + " " + r.statusText;
     try { m = (await r.json()).error || m; } catch (e) { /* not json */ }
