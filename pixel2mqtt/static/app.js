@@ -228,7 +228,27 @@ async function importStock() {
     }
     if (job.error) throw new Error(job.error);
     const r = job.result;
-    out.textContent = `Done: ${r.imported} imported, ${r.skipped} already there` + (r.failed.length ? `, ${r.failed.length} failed:\n` + r.failed.join("\n") : ".");
+    out.textContent = `Done: ${r.imported} imported, ${r.skipped} already there` + (r.removed && r.removed.length ? `, ${r.removed.length} duplicate(s) removed` : "") + (r.failed.length ? `, ${r.failed.length} failed:\n` + r.failed.join("\n") : ".");
+    await loadLibrary(); refreshStorage();
+  } catch (e) { out.textContent = "Failed: " + e.message; }
+  btn.disabled = false;
+}
+
+async function dedupeAnims() {
+  if (!cur) return toast("Adopt a display first", true);
+  if (!confirm("Delete animations that are identical to another one? In each group the one with a real name is kept (over 'App ...' copies).")) return;
+  const out = $("#importProg"), btn = $("#dedupeBtn");
+  btn.disabled = true;
+  try {
+    let job = await postJSON(`/displays/${cur}/dedupe`, {});
+    while (!job.finished) {
+      out.textContent = `Comparing ${job.done}/${job.total || "?"} ${job.message}`;
+      await new Promise(r => setTimeout(r, 700));
+      job = await api(`/jobs/${job.id}`);
+    }
+    if (job.error) throw new Error(job.error);
+    const k = job.result.kept;
+    out.textContent = job.result.removed.length ? "Removed " + job.result.removed.length + ":\n" + job.result.removed.map(n => `${stem(n)} (same as ${stem(k[n])})`).join("\n") : "No duplicates.";
     await loadLibrary(); refreshStorage();
   } catch (e) { out.textContent = "Failed: " + e.message; }
   btn.disabled = false;
@@ -284,6 +304,7 @@ $("#displaySel").addEventListener("change", e => { cur = e.target.value || null;
 $("#scanBtn").addEventListener("click", async () => { try { await api("/scan", { method: "POST" }); await refreshStatus(); toast("Scan complete"); } catch (e) { toast(e.message, true); } });
 $("#manualAdd").addEventListener("click", () => { const h = $("#manualHost").value.trim(); if (h) adopt(h); });
 $("#importBtn").addEventListener("click", importStock);
+$("#dedupeBtn").addEventListener("click", dedupeAnims);
 $("#fileIn").addEventListener("change", e => { uploadFiles([...e.target.files]); e.target.value = ""; });
 const drop = $("#drop");
 ["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));

@@ -235,6 +235,9 @@ def make_handler(mgr, config):
                                  lambda prog: stock.run(api, prog, overwrite=bool(b.get("overwrite")),
                                                         renames=renames.for_display(d.id, "anims")))
                 return self.send(200, job)
+            if p == ["dedupe"] and m == "POST":
+                job = jobs.start("Remove duplicate animations", lambda prog: stock.dedupe(api, progress=prog))
+                return self.send(200, job)
             if p == ["rename"] and m == "POST":  # {"name": "Old.anim", "new": "New name"} (animations)
                 b = self.jbody()
                 old = b.get("name", "")

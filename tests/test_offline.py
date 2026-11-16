@@ -114,5 +114,28 @@ class NoRes:
 names = [f for k, f, _ in stock.plan(NoRes(), {"Dragon": "My Dragon"}) if k == "anims"]
 check("My Dragon.anim" in names and "Dragon.anim" not in names, "import writes renamed animations under the new name")
 
+# dedupe: identical animations collapse to the real-named one; only_app never deletes real names
+class FakeFiles:
+    def __init__(self, files):
+        self.f = dict(files)
+
+    def files(self, kind):
+        return [{"name": n, "size": len(d)} for n, d in self.f.items()]
+
+    def get_file(self, kind, name):
+        return self.f[name]
+
+    def delete_file(self, kind, name):
+        del self.f[name]
+
+
+fa = FakeFiles({"App 1111.anim": b"AAAA", "Blue Rings.anim": b"AAAA", "Blue Rings.clock": b"1 2 X",
+                "Copy of Rings.anim": b"AAAA", "App 2222.anim": b"BBBB", "Other.anim": b"CC"})
+r = stock.dedupe(fa, only_app=True)
+check(r["removed"] == ["App 1111.anim"] and "Copy of Rings.anim" in fa.f, "auto dedupe removes only App copies")
+r = stock.dedupe(fa)
+check(r["removed"] == ["Copy of Rings.anim"] and r["kept"]["Copy of Rings.anim"] == "Blue Rings.anim"
+      and sorted(fa.f) == ["App 2222.anim", "Blue Rings.anim", "Blue Rings.clock", "Other.anim"], "full dedupe keeps one per group")
+
 print(f"\n{len(fails)} failure(s)" if fails else "\nALL PASSED")
 sys.exit(1 if fails else 0)

@@ -130,6 +130,7 @@
     <div class="row"><b>Built-in artwork</b><span class="grow"></span>
       <button id="importBtn" title="Reads Govee's stock files, plus any scenes the Govee app sent to this display before pixeld was installed, and converts them with pixel2mqtt's tuned renderer">Import built-in animations &amp; icons</button>
       <label class="small"><input id="importOver" type="checkbox"> overwrite existing</label>
+      <button id="dedupeBtn" title="Delete animations that are identical to another one, keeping the one with a real name over 'App ...' copies">Remove duplicates</button>
     </div>
     <p class="hint">Converts the animations and icons that ship inside the display's own firmware (59 animations incl. 4 clock scenes, ~80 icons).
       Nothing is downloaded from the internet and no artwork is stored by pixel2mqtt.</p>

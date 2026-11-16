@@ -211,5 +211,47 @@ def run(api, progress=None, overwrite=False, renames=None):
             log.warning("import %s failed: %s", name, e)
             res["failed"].append(f"{name}: {e}")
     if progress:
+        progress(len(jobs), len(jobs), "removing duplicates")
+    res["removed"] = dedupe(api, only_app=True)["removed"]
+    if progress:
         progress(len(jobs), len(jobs), "done")
     return res
+
+
+def _keep_order(name):
+    # keep real names before "App <hash>" ones, then alphabetical
+    return (name.startswith("App "), name.lower())
+
+
+def dedupe(api, only_app=False, progress=None):
+    """Delete animations whose content is identical to another one on the display. In each group of identical
+    files the one with a real name (not "App <hash>") is kept. only_app: only ever delete "App ..." copies.
+    Returns {"removed": [names], "kept": {removed name: kept name}}."""
+    files = [f for f in api.files("anims") if f["name"].endswith(".anim")]
+    all_names = {f["name"] for f in api.files("anims")}
+    by_size = {}
+    for f in files:
+        by_size.setdefault(f["size"], []).append(f["name"])
+    groups = {}
+    cands = [n for names in by_size.values() if len(names) > 1 for n in names]  # only same-size files can match
+    for i, n in enumerate(cands):
+        if progress:
+            progress(i, len(cands), n)
+        groups.setdefault(hashlib.sha1(api.get_file("anims", n)).digest(), []).append(n)
+    out = {"removed": [], "kept": {}}
+    for names in groups.values():
+        if len(names) < 2:
+            continue
+        names.sort(key=_keep_order)
+        keep = names[0]
+        for n in names[1:]:
+            if only_app and not n.startswith("App "):
+                continue
+            api.delete_file("anims", n)
+            if n[:-5] + ".clock" in all_names:
+                api.delete_file("anims", n[:-5] + ".clock")
+            out["removed"].append(n)
+            out["kept"][n] = keep
+    if progress:
+        progress(len(cands), len(cands), "done")
+    return out
