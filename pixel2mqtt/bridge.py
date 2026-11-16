@@ -201,6 +201,7 @@ class Manager:
         self.displays[d.id] = d
         if self.mqtt:
             self.mqtt.subscribe(d.topic + "/+/set")
+            self.mqtt.subscribe(d.topic + "/status")   # to undo a stray "offline" (see _on_message)
         d.start()
         return d
 
@@ -225,6 +226,13 @@ class Manager:
                     d.refresh_discovery()
             return
         for d in list(self.displays.values()):
+            if topic == d.topic + "/status":
+                # Availability is ours. Something else can still write "offline" here, e.g. the display's own MQTT
+                # will when it hands its direct connection over to us. Put it right while the display is reachable.
+                if payload != b"online" and d.online:
+                    log.info("%s: status was set to %r by someone else; republishing online", d.name, payload)
+                    self.mqtt.publish(d.topic + "/status", "online", retain=True)
+                return
             if topic_matches(d.topic + "/+/set", topic):
                 d.command(topic[len(d.topic) + 1:-4], payload)
                 return
@@ -234,6 +242,7 @@ class Manager:
             d.stop()
         if self.mqtt and self.mqtt.connected:
             for d in self.displays.values():
+                d.online = False   # so _on_message doesn't "repair" our own offline
                 self.mqtt.publish(d.topic + "/status", "offline", retain=True)
             self.mqtt.publish(self.bridge_state_topic, "offline", retain=True)
 
@@ -266,6 +275,7 @@ class Manager:
         d.stop()
         if self.mqtt:
             self.mqtt.unsubscribe(d.topic + "/+/set")
+            self.mqtt.unsubscribe(d.topic + "/status")
             self.mqtt.publish(d.topic + "/status", "offline", retain=True)
         if unpair:
             try:

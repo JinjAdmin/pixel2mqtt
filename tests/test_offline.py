@@ -73,5 +73,26 @@ check(p["uniq_id"] == "p2m_x_animation" and p["cmd_t"] == "pixel2mqtt/desk/anima
 check(p["dev"] == {"ids": ["p2m_x_h6631"], "name": "Desk", "via_device": "pixel2mqtt_bridge"}, "device block")
 check(p["avty"] == [{"t": "pixel2mqtt/bridge/state"}, {"t": "pixel2mqtt/desk/status"}] and "avty_t" not in p, "availability list")
 
+
+# a stray retained "offline" (e.g. the display's own MQTT will) is undone while the display is reachable
+class FakeMQTT:
+    def __init__(self):
+        self.pubs = []
+
+    def publish(self, t, p, retain=False):
+        self.pubs.append((t, p, retain))
+
+
+m.mqtt = FakeMQTT()
+m.displays[d.id] = d
+d.online = True
+m._on_message("pixel2mqtt/desk/status", b"offline", True)
+check(m.mqtt.pubs == [("pixel2mqtt/desk/status", "online", True)], "stray offline repaired")
+m.mqtt.pubs.clear()
+m._on_message("pixel2mqtt/desk/status", b"online", True)
+d.online = False
+m._on_message("pixel2mqtt/desk/status", b"offline", True)
+check(m.mqtt.pubs == [], "real offline / own online left alone")
+
 print(f"\n{len(fails)} failure(s)" if fails else "\nALL PASSED")
 sys.exit(1 if fails else 0)
