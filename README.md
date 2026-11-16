@@ -63,6 +63,16 @@ when the container is down.
 - An MQTT broker (e.g. Mosquitto) and Home Assistant with the MQTT integration.
 - Docker, or Python ≥ 3.8 to run it directly. It uses no third-party packages.
 
+## Home Assistant OS: install as an app (add-on)
+[![Add repository to my Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FSamWiIIiams%2Fpixel2mqtt-addon)
+
+Running Home Assistant OS (or Supervised)? Add the repository `https://github.com/SamWiIIiams/pixel2mqtt-addon`
+under Settings → Apps → Install app → ⋮ → Repositories (older versions: Add-ons → Add-on Store), then install
+**pixel2mqtt**. It uses the Mosquitto app's login automatically, and its web UI opens inside Home Assistant
+(Ingress). Details: the [add-on documentation](https://github.com/SamWiIIiams/pixel2mqtt-addon/blob/main/pixel2mqtt/DOCS.md).
+
+Running Home Assistant in a container instead? Use Docker as below.
+
 ## Quick start (Docker)
 ```sh
 cp .env.example .env        # optional: broker login, other settings
