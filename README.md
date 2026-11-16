@@ -122,6 +122,9 @@ services:
     #     required: false
 ```
 
+`latest` is the newest release. To stay on one version, use `:0.4` (gets 0.4.x fixes) or an exact version
+such as `:0.4.2`. `:edge` follows the main branch: the newest changes, not yet released.
+
 Open `http://<server>:8466/`, go to **Displays**, click **Scan the network**, then **Adopt**.
 
 The compose file uses `network_mode: host`. Discovery is a UDP broadcast on port 7778, and the live preview sends
