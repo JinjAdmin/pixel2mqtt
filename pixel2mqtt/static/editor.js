@@ -11,12 +11,20 @@ const Editor = (() => {
   const docs = { anim: Scene.newScene(PW, PH, [0, 0, 0]), icon: Scene.newScene(16, 16, null) };
   const hist = { anim: { undo: [], redo: [] }, icon: { undo: [], redo: [] } };
   const sel = { anim: { l: 0, f: 0 }, icon: { l: 0, f: 0 } };
-  let mode = "anim", sc = docs.anim, tool = "pencil", color = [255, 136, 0, 255];
+  let mode = "anim", sc = docs.anim, tool = "pencil";
   let playing = false, t = 0, t0 = 0, loopLen = 1000, drag = null, hover = null, dirty = true, cell = 20, stripDirty = true;
   const BRUSHES = [1, 2, 3, 4, 6];
   // separate brushes: pencil (also line and rectangle) and eraser, so switching keeps each one's settings
-  const brushes = { pencil: { size: 1, round: false }, eraser: { size: 3, round: false } };
-  const brushOf = (tl, erase) => brushes[tl === "eraser" || erase ? "eraser" : "pencil"];
+  // every tool keeps its own settings: pencil, line and rectangle (size, shape, colour), eraser (size, shape),
+  // fill (colour). The eyedropper sets the colour of the tool used before it.
+  const ORANGE = [255, 136, 0, 255];
+  const settings = {
+    pencil: { size: 1, round: false, color: ORANGE }, line: { size: 1, round: false, color: ORANGE },
+    rect: { size: 1, round: false, color: ORANGE }, eraser: { size: 3, round: false }, fill: { color: ORANGE },
+  };
+  let colorTool = "pencil";   // the last tool with a colour (what the eyedropper sets)
+  const brushOf = (tl, erase) => settings[erase || tl === "eraser" ? "eraser" : settings[tl] && settings[tl].size ? tl : "pencil"];
+  const colorOf = tl => (settings[tl] && settings[tl].color) || settings[colorTool].color;
 
   const L = () => sc.layers[sel[mode].l];
   const F = () => { const l = L(); return l.frames[Math.min(sel[mode].f, l.frames.length - 1)]; };
@@ -74,7 +82,7 @@ const Editor = (() => {
       g.setLineDash([4, 3]); g.strokeStyle = "#e8a33a"; g.lineWidth = 1.5; g.strokeRect(ox * cell + .5, oy * cell + .5, f.w * cell - 1, f.h * cell - 1); g.setLineDash([]);
     }
     if (drag && (drag.tool === "line" || drag.tool === "rect") && drag.cur) {
-      g.fillStyle = hex(color) + "cc";
+      g.fillStyle = hex(colorOf(drag.tool)) + "cc";
       const br = brushOf(drag.tool, drag.erase);
       (drag.tool === "line" ? line : rect)(drag.x0, drag.y0, drag.cur[0], drag.cur[1], (x, y) => stamp(x, y, br, (a, b) => g.fillRect(a * cell, b * cell, cell, cell)));
     }
@@ -82,7 +90,7 @@ const Editor = (() => {
       g.strokeStyle = "rgba(255,255,255,.6)"; g.lineWidth = 1;
       const br = brushOf(tool);
       if (usesBrush(tool) && br.size > 1) {   // shade exactly the cells the brush will paint
-        g.fillStyle = tool === "eraser" ? "rgba(255,255,255,.22)" : hex(color) + "66";
+        g.fillStyle = tool === "eraser" ? "rgba(255,255,255,.22)" : hex(colorOf(tool)) + "66";
         stamp(hover[0], hover[1], br, (a, b) => g.fillRect(a * cell, b * cell, cell, cell));
       } else g.strokeRect(hover[0] * cell + .5, hover[1] * cell + .5, cell - 1, cell - 1);
     }
@@ -127,7 +135,7 @@ const Editor = (() => {
 
   /* ---------------------------------------------------------------- tool settings flyout */
   // hover a tool (or click the active one) -> settings to the right of the tool column, over the canvas edge
-  const POP = { pencil: ["Pencil", true, true], line: ["Line (pencil settings)", true, true], rect: ["Rectangle (pencil settings)", true, true],
+  const POP = { pencil: ["Pencil", true, true], line: ["Line", true, true], rect: ["Rectangle", true, true],
                 eraser: ["Eraser", true, false], fill: ["Fill", false, true] };
   let popTool = null, popTimer = null;
   function showPop(tl, btn) {
@@ -147,12 +155,14 @@ const Editor = (() => {
     if (now) go(); else popTimer = setTimeout(go, 250);
   }
   function syncPop() {
-    const br = brushOf(popTool || tool);
+    const tl = popTool || tool, col = settings[tl] && settings[tl].color;
+    if (col) { $("#color").value = hex(col); $("#colorHex").textContent = hex(col); }
+    const br = brushOf(tl);
     document.querySelectorAll("#brushSizes [data-size]").forEach(b => b.classList.toggle("active", +b.dataset.size === br.size));
     document.querySelectorAll("#brushShapes [data-shape]").forEach(b => b.classList.toggle("active", (b.dataset.shape === "round") === br.round));
     document.querySelectorAll("#brushSizes i").forEach(i => { i.style.borderRadius = br.round ? "50%" : "0"; });
   }
-  function setBrush(n, tl) { brushOf(tl || popTool || tool).size = n; syncPop(); dirty = true; }
+  function setBrush(n, tl) { tl = tl || popTool || tool; if (!usesBrush(tl)) return; brushOf(tl).size = n; syncPop(); dirty = true; }
   function setShape(r) { brushOf(popTool || tool).round = r; syncPop(); dirty = true; }
   // canvas cursor = the tool itself (pencil, eraser, bucket, dropper) with its tip on the hot spot; line and
   // rectangle keep a "+" for precise placement. "C" in a path is replaced by the current colour.
@@ -164,7 +174,7 @@ const Editor = (() => {
   };
   function cursorFor(tl) {
     if (tl === "move") return "move";
-    const col = hex(color), cur = CURSORS[tl];
+    const col = hex(colorOf(tl)), cur = CURSORS[tl];
     let svg;
     if (cur) {
       const body = cur.paths.map(p => { const [d, f] = p.split("|"); return `<path d='${d}' fill='${f === "C" ? col : f}'/>`; }).join("");
@@ -208,13 +218,13 @@ const Editor = (() => {
     if (tl === "move") { pushUndo(); drag = { tool: tl, x0: x, y0: y, lx: L().x, ly: L().y }; return; }
     if (tl === "pick") {
       const c = composite(), i = (y * sc.w + x) * 4;
-      if (c[i + 3]) setColor([c[i], c[i + 1], c[i + 2], 255]);
-      setTool("pencil"); return;
+      if (c[i + 3]) setColor([c[i], c[i + 1], c[i + 2], 255], colorTool);
+      setTool(colorTool); return;
     }
     pushUndo();
-    if (tl === "fill") { flood(x, y, color); stripDirty = true; return; }
+    if (tl === "fill") { flood(x, y, colorOf("fill")); stripDirty = true; return; }
     drag = { tool: tl, x0: x, y0: y, last: [x, y], cur: [x, y], erase };
-    if (tl === "pencil" || tl === "eraser") paint(x, y, tl === "eraser" ? ERASE : color, brushOf(tl));
+    if (tl === "pencil" || tl === "eraser") paint(x, y, tl === "eraser" ? ERASE : colorOf("pencil"), brushOf(tl));
   });
   cv.addEventListener("pointermove", e => {
     const [x, y] = cellAt(e);
@@ -222,13 +232,13 @@ const Editor = (() => {
     if (!drag) return;
     if (drag.tool === "move") { L().x = drag.lx + x - drag.x0; L().y = drag.ly + y - drag.y0; touch(); return; }
     if (drag.tool === "pencil" || drag.tool === "eraser") {
-      line(drag.last[0], drag.last[1], x, y, (a, b) => paint(a, b, drag.tool === "eraser" ? ERASE : color, brushOf(drag.tool)));
+      line(drag.last[0], drag.last[1], x, y, (a, b) => paint(a, b, drag.tool === "eraser" ? ERASE : colorOf("pencil"), brushOf(drag.tool)));
       drag.last = [x, y];
     } else drag.cur = [x, y];
   });
   cv.addEventListener("pointerup", () => {
     if (drag && (drag.tool === "line" || drag.tool === "rect")) {
-      const c = drag.erase ? ERASE : color;
+      const c = drag.erase ? ERASE : colorOf(drag.tool);
       const br = brushOf(drag.tool, drag.erase);
       (drag.tool === "line" ? line : rect)(drag.x0, drag.y0, drag.cur[0], drag.cur[1], (a, b) => paint(a, b, c, br));
     }
@@ -239,13 +249,22 @@ const Editor = (() => {
 
   function setTool(tl) {
     tool = tl;
+    if (settings[tl] && settings[tl].color) colorTool = tl;
     document.querySelectorAll("#tools [data-tool]").forEach(b => b.classList.toggle("active", b.dataset.tool === tl));
     cv.style.cursor = cursorFor(tl);
   }
-  function setColor(c) {
-    color = c; $("#color").value = hex(c); $("#colorHex").textContent = hex(c);
-    $("#tools").style.setProperty("--cur", hex(c));   // pencil and bucket icons show the colour
-    cv.style.cursor = cursorFor(tool); dirty = true;
+  function setColor(c, tl) {
+    tl = tl || popTool || (settings[tool] && settings[tool].color ? tool : colorTool);
+    if (!settings[tl] || !settings[tl].color) return;
+    settings[tl].color = c;
+    if ((popTool || tool) === tl) { $("#color").value = hex(c); $("#colorHex").textContent = hex(c); }
+    syncTints(); cv.style.cursor = cursorFor(tool); dirty = true;
+  }
+  function syncTints() {   // each tool icon shows its own colour
+    document.querySelectorAll("#tools [data-tool]").forEach(b => {
+      const s = settings[b.dataset.tool];
+      if (s && s.color) b.style.setProperty("--cur", hex(s.color));
+    });
   }
 
   /* ---------------------------------------------------------------- layers panel */
@@ -529,10 +548,23 @@ const Editor = (() => {
   document.querySelectorAll("input[name=emode]").forEach(r => r.addEventListener("change", () => setMode(r.value)));
   document.querySelectorAll("#brushSizes [data-size]").forEach(b => b.addEventListener("click", () => setBrush(+b.dataset.size)));
   document.querySelectorAll("#brushShapes [data-shape]").forEach(b => b.addEventListener("click", () => setShape(b.dataset.shape === "round")));
+  // The flyout opens after a short hover (so passing over a button on the way to the canvas doesn't open it), or
+  // at once when moving between buttons while it's already open. Clicking a tool only selects it; on touch
+  // screens, tapping the tool that's already selected toggles the flyout.
+  let hoverTimer = null;
+  const popOpen = () => !$("#toolPop").classList.contains("hidden");
   document.querySelectorAll("#tools [data-tool]").forEach(b => {
-    b.addEventListener("mouseenter", () => showPop(b.dataset.tool, b));
-    b.addEventListener("mouseleave", () => hidePop());
-    b.addEventListener("click", () => { if (POP[b.dataset.tool]) showPop(b.dataset.tool, b); });   // touch: tap to open
+    const t = b.dataset.tool;
+    b.addEventListener("mouseenter", () => {
+      clearTimeout(hoverTimer);
+      if (popOpen()) showPop(t, b); else hoverTimer = setTimeout(() => showPop(t, b), 350);
+    });
+    b.addEventListener("mouseleave", () => { clearTimeout(hoverTimer); hidePop(); });
+    b.addEventListener("pointerdown", e => { b.tapToggle = e.pointerType !== "mouse" && tool === t; });   // touch only
+    b.addEventListener("click", () => {
+      clearTimeout(hoverTimer);
+      if (b.tapToggle && POP[t] && !popOpen()) showPop(t, b); else hidePop(true);
+    });
   });
   $("#toolPop").addEventListener("mouseenter", () => clearTimeout(popTimer));
   $("#toolPop").addEventListener("mouseleave", () => hidePop());
@@ -560,6 +592,6 @@ const Editor = (() => {
     }
   });
 
-  setColor(color); setMode("anim"); requestAnimationFrame(frame); refreshOpenList();
+  syncTints(); setTool("pencil"); setMode("anim"); requestAnimationFrame(frame); refreshOpenList();
   return { addIconLayer, editIcon, openAnim, refreshOpenList };
 })();
