@@ -83,10 +83,45 @@ under Settings → Apps → Install app → ⋮ → Repositories (older versions
 Running Home Assistant in a container instead? Use Docker as below.
 
 ## Quick start (Docker)
-```sh
-cp .env.example .env        # optional: broker login, other settings
-docker compose up -d       # image: swilli23/pixel2mqtt (amd64 + arm64)
+Save this as `docker-compose.yml` and run `docker compose up -d`. The image `swilli23/pixel2mqtt` is built for
+amd64 and arm64. (The `docker-compose.yml` in this repository is a shorter version that reads settings from
+`.env` instead.)
+
+```yaml
+services:
+  pixel2mqtt:
+    image: swilli23/pixel2mqtt:latest
+    container_name: pixel2mqtt
+    restart: unless-stopped
+    network_mode: host          # needed for LAN discovery (UDP broadcast) and the live preview
+    volumes:
+      - ./data:/app/data        # adopted displays (with their API tokens), projects, settings
+    # Every setting is optional. Uncomment what you need; the values shown are the defaults.
+    # environment:
+      # --- MQTT broker ---
+      # MQTT_HOST: localhost            # "none" = editor only, no MQTT
+      # MQTT_PORT: 1883
+      # MQTT_USER: pixel2mqtt           # only if the broker requires a login
+      # MQTT_PASSWORD: change-me        # or keep it in a file:
+      # MQTT_PASSWORD_FILE: /run/secrets/mqtt_password
+      # MQTT_CLIENT_ID: pixel2mqtt      # default: random per start; must be unique per instance
+      # --- Home Assistant ---
+      # PIXEL2MQTT_BASE: pixel2mqtt     # base topic
+      # HA_DISCOVERY_PREFIX: homeassistant
+      # --- displays ---
+      # PIXEL_HOSTS: 192.168.1.50,192.168.1.51   # probe these directly (needed without host networking)
+      # SCAN_INTERVAL: 120              # seconds between network scans
+      # --- web editor ---
+      # WEB_PORT: 8466
+      # WEB_HOST: 0.0.0.0
+      # --- logging ---
+      # LOG_LEVEL: INFO                 # DEBUG for troubleshooting
+    # Settings can also go in a .env file (see .env.example) instead of the environment block:
+    # env_file:
+    #   - path: .env
+    #     required: false
 ```
+
 Open `http://<server>:8466/`, go to **Displays**, click **Scan the network**, then **Adopt**.
 
 The compose file uses `network_mode: host`. Discovery is a UDP broadcast on port 7778, and the live preview sends
@@ -146,6 +181,7 @@ These are environment variables. `.env` in the working directory and `data/.env`
 | `WEB_PORT` / `WEB_HOST` | `8466` / `0.0.0.0` | |
 | `PIXEL_HOSTS` | – | Comma-separated display IPs (`ip` or `ip:port`) to probe directly |
 | `SCAN_INTERVAL` | `120` | Seconds between network scans. Scans also follow DHCP address changes. |
+| `LOG_LEVEL` | `INFO` | `DEBUG` for troubleshooting |
 
 The web UI has **no login**. Like zigbee2mqtt's frontend, it's meant for your LAN only, so don't expose it
 through a reverse proxy without adding authentication there.
