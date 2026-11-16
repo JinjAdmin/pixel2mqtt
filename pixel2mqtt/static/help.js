@@ -1,11 +1,9 @@
 "use strict";
-// Help drawer: shows the editor guide as published on GitHub (docs/GUIDE.md on main), or the copy bundled with
-// this install when GitHub can't be reached.
+// Help drawer: shows the editor guide bundled with this install (docs/GUIDE.md, copied into the image), so it always
+// matches the version the user is running rather than whatever is on GitHub's main branch.
 (() => {
   const REPO = "https://github.com/SamWiIIiams/pixel2mqtt";
-  const RAW = "https://raw.githubusercontent.com/SamWiIIiams/pixel2mqtt/main/docs/";
-  const LOCAL = "docs/";   // copy bundled with this install (relative, so it works behind HA Ingress)
-  let base = RAW;          // where the guide we're showing came from; its images load from the same place
+  const base = "docs/";   // relative, so it works behind HA Ingress
   const PAGE = REPO + "/blob/main/docs/GUIDE.md";
   const $ = s => document.querySelector(s);
   let loaded = false;
@@ -75,37 +73,24 @@
     return out.join("\n");
   }
 
-  async function get(url, force, ms) {
-    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
-    try {
-      const r = await fetch(url + (force ? "?t=" + Date.now() : ""), { cache: force ? "reload" : "default", signal: ctl.signal });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return await r.text();
-    } finally { clearTimeout(t); }
-  }
-
-  async function load(force) {
-    const body = $("#helpBody"), note = $("#helpSrc");
-    if (loaded && !force) return;
+  async function load() {
+    const body = $("#helpBody");
+    if (loaded) return;
     body.innerHTML = `<p class="muted">Loading the guide…</p>`;
-    let md = null;
-    try { md = await get(RAW + "GUIDE.md", force, 4000); base = RAW; note.textContent = "latest, from GitHub"; }
-    catch (e) {
-      try { md = await get(LOCAL + "GUIDE.md", force, 4000); base = LOCAL; note.textContent = "offline copy"; }
-      catch (e2) {
-        note.textContent = "";
-        body.innerHTML = `<p>Couldn't load the guide (${esc(String(e2.message || e2))}). ` +
-          `You can read it at <a href="${PAGE}" target="_blank" rel="noopener">github.com</a>.</p>`;
-        return;
-      }
+    try {
+      const r = await fetch(base + "GUIDE.md");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      body.innerHTML = render(await r.text());
+      loaded = true;
+    } catch (e) {
+      body.innerHTML = `<p>Couldn't load the guide (${esc(String(e.message || e))}). ` +
+        `You can read it at <a href="${PAGE}" target="_blank" rel="noopener">github.com</a>.</p>`;
     }
-    body.innerHTML = render(md);
-    loaded = true;
   }
 
   function open() {
     $("#helpDrawer").classList.add("open"); $("#helpShade").classList.add("open");
-    $("#helpDrawer").setAttribute("aria-hidden", "false"); load(false);
+    $("#helpDrawer").setAttribute("aria-hidden", "false"); load();
   }
   function close() {
     $("#helpDrawer").classList.remove("open"); $("#helpShade").classList.remove("open");
@@ -114,7 +99,6 @@
   $("#helpBtn").addEventListener("click", () => $("#helpDrawer").classList.contains("open") ? close() : open());
   $("#helpClose").addEventListener("click", close);
   $("#helpShade").addEventListener("click", close);
-  $("#helpReload").addEventListener("click", () => load(true));
   $("#helpGh").href = PAGE;
   document.addEventListener("keydown", e => { if (e.key === "Escape" && $("#helpDrawer").classList.contains("open")) close(); });
   $("#helpBody").addEventListener("click", e => {   // in-page anchors scroll inside the drawer
