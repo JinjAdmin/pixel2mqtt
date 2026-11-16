@@ -368,6 +368,7 @@ const Editor = (() => {
   function renderStrip() {
     const l = L(), s = sel[mode];
     $("#framesOf").textContent = ` of "${l.name}" (${l.frames.length})`;
+    if (document.activeElement !== $("#frAllMs")) $("#frAllMs").value = F().delay;
     $("#frameStrip").replaceChildren(...l.frames.map((f, i) => {
       const c = el("canvas", { width: f.w, height: f.h });
       const img = new ImageData(new Uint8ClampedArray(f.rgba), f.w, f.h);
@@ -653,6 +654,12 @@ const Editor = (() => {
   $("#lyDown").addEventListener("click", () => moveLayer(-1));
   $("#addIcon").addEventListener("click", () => addIconLayer($("#iconSel").value));
   const frOp = fn => { pushUndo(); fn(L(), sel[mode]); delete L().span; stripDirty = true; replan(); touch(); renderLayers(); };
+  $("#frAllBtn").addEventListener("click", () => {   // one duration for every frame of the selected layer
+    const ms = Math.max(20, Math.min(10000, Math.round(+$("#frAllMs").value || 100)));
+    frOp(l => { for (const f of l.frames) f.delay = ms; });
+    toast(`All ${L().frames.length} frames of "${L().name}" now last ${ms} ms`);
+  });
+  $("#frAllMs").addEventListener("keydown", e => { if (e.key === "Enter") $("#frAllBtn").click(); });
   $("#frAdd").addEventListener("click", () => frOp((l, s) => { const f = F(); l.frames.splice(s.f + 1, 0, { w: f.w, h: f.h, delay: f.delay, rgba: new Uint8ClampedArray(f.w * f.h * 4) }); s.f++; }));
   $("#frDup").addEventListener("click", () => frOp((l, s) => { const f = F(); l.frames.splice(s.f + 1, 0, { w: f.w, h: f.h, delay: f.delay, rgba: f.rgba.slice() }); s.f++; }));
   $("#frDel").addEventListener("click", () => { if (L().frames.length < 2) return toast("A layer needs at least one frame", true); frOp((l, s) => { l.frames.splice(s.f, 1); s.f = Math.max(0, s.f - 1); }); });

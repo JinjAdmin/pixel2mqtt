@@ -23,6 +23,8 @@ broker and Home Assistant for any number of displays. You get:
   Copies of built-ins are skipped. (Needs pixeld-h6631 v0.2.0 or newer.)
   *pixel2mqtt contains no artwork.* It reads the files from your own display and writes the results back to it.
 
+**New to the editor?** See the [editor guide](docs/GUIDE.md) for projects, tools, layers, frames and icons.
+
 ### Screenshots
 **Editor**: layers, frames, motion and opacity, with the colour palette and scene controls on the right.
 
