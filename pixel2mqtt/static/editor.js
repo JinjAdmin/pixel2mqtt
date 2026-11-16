@@ -20,10 +20,10 @@ const Editor = (() => {
   const ORANGE = [255, 136, 0, 255];
   const settings = {
     pencil: { size: 1, round: false, color: ORANGE }, line: { size: 1, round: false, color: ORANGE },
-    rect: { size: 1, round: false, color: ORANGE }, eraser: { size: 3, round: false }, fill: { color: ORANGE },
+    shape: { size: 1, round: false, color: ORANGE, kind: "rect", fill: false }, eraser: { size: 3, round: false }, fill: { color: ORANGE },
   };
   let colorTool = "pencil";   // the last tool with a colour (what the eyedropper sets)
-  const brushOf = (tl, erase) => settings[erase || tl === "eraser" ? "eraser" : settings[tl] && settings[tl].size ? tl : "pencil"];
+  const brushOf = (tl, erase) => settings[erase || tl === "eraser" ? "eraser" : settings[tl] && settings[tl].size !== undefined ? tl : "pencil"];
   const colorOf = tl => (settings[tl] && settings[tl].color) || settings[colorTool].color;
 
   const L = () => sc.layers[sel[mode].l];
@@ -81,10 +81,10 @@ const Editor = (() => {
       const [ox, oy] = Scene.layerPos(l, t), f = F();
       g.setLineDash([4, 3]); g.strokeStyle = "#e8a33a"; g.lineWidth = 1.5; g.strokeRect(ox * cell + .5, oy * cell + .5, f.w * cell - 1, f.h * cell - 1); g.setLineDash([]);
     }
-    if (drag && (drag.tool === "line" || drag.tool === "rect") && drag.cur) {
-      g.fillStyle = hex(colorOf(drag.tool)) + "cc";
-      const br = brushOf(drag.tool, drag.erase);
-      (drag.tool === "line" ? line : rect)(drag.x0, drag.y0, drag.cur[0], drag.cur[1], (x, y) => stamp(x, y, br, (a, b) => g.fillRect(a * cell, b * cell, cell, cell)));
+    if (drag && (drag.tool === "line" || drag.tool === "shape") && drag.cur) {
+      g.fillStyle = drag.erase ? "rgba(255,255,255,.35)" : hex(colorOf(drag.tool)) + "cc";
+      if (drag.tool === "shape") shapeCells(drag, (a, b) => g.fillRect(a * cell, b * cell, cell, cell));
+      else { const br = brushOf("line", drag.erase); line(drag.x0, drag.y0, drag.cur[0], drag.cur[1], (x, y) => stamp(x, y, br, (a, b) => g.fillRect(a * cell, b * cell, cell, cell))); }
     }
     if (hover && !drag && tool !== "move" && !playing) {
       g.strokeStyle = "rgba(255,255,255,.6)"; g.lineWidth = 1;
@@ -123,7 +123,7 @@ const Editor = (() => {
     return (sy * f.w + sx) * 4;
   }
   function setPx(x, y, c) { const i = layerIndex(x, y); if (i >= 0) { F().rgba.set(c, i); touch(); } }
-  const usesBrush = tl => tl === "pencil" || tl === "eraser" || tl === "line" || tl === "rect";
+  const usesBrush = tl => tl === "pencil" || tl === "eraser" || tl === "line";
   function stamp(x, y, br, fn) {  // the brush around (x, y); even sizes extend right/down
     const n = br.size, a = Math.floor((n - 1) / 2), b = n - 1 - a, c = (b - a) / 2, r2 = (n * n - n) / 4;
     for (let dy = -a; dy <= b; dy++) for (let dx = -a; dx <= b; dx++) {
@@ -135,14 +135,18 @@ const Editor = (() => {
 
   /* ---------------------------------------------------------------- tool settings flyout */
   // hover a tool (or click the active one) -> settings to the right of the tool column, over the canvas edge
-  const POP = { pencil: ["Pencil", true, true], line: ["Line", true, true], rect: ["Rectangle", true, true],
-                eraser: ["Eraser", true, false], fill: ["Fill", false, true] };
+  // [title, brush size, brush tip, colour, shape options]
+  const POP = { pencil: ["Pencil", 1, 1, 1, 0], line: ["Line", 1, 1, 1, 0], shape: ["Shape", 1, 0, 1, 1],
+                eraser: ["Eraser", 1, 1, 0, 0], fill: ["Fill", 0, 0, 1, 0] };
   let popTool = null, popTimer = null;
   function showPop(tl, btn) {
     const cfg = POP[tl]; if (!cfg) return hidePop(true);
     clearTimeout(popTimer); popTool = tl;
     $("#tpHead").textContent = cfg[0];
-    $("#tpBrush").classList.toggle("hidden", !cfg[1]); $("#tpColor").classList.toggle("hidden", !cfg[2]);
+    $("#tpBrush").classList.toggle("hidden", !cfg[1] || (tl === "shape" && settings.shape.fill));
+    document.querySelectorAll("#toolPop .tptip").forEach(e => e.classList.toggle("hidden", !cfg[2]));
+    $("#tpColor").classList.toggle("hidden", !cfg[3]); $("#tpShape").classList.toggle("hidden", !cfg[4]);
+    $("#tpSizeLabel").firstChild.textContent = tl === "shape" ? "Outline width " : "Size ";
     syncPop();
     const p = $("#toolPop"), r = btn.getBoundingClientRect();
     p.classList.remove("hidden");
@@ -162,7 +166,15 @@ const Editor = (() => {
     document.querySelectorAll("#brushShapes [data-shape]").forEach(b => b.classList.toggle("active", (b.dataset.shape === "round") === br.round));
     document.querySelectorAll("#brushSizes i").forEach(i => { i.style.borderRadius = br.round ? "50%" : "0"; });
   }
-  function setBrush(n, tl) { tl = tl || popTool || tool; if (!usesBrush(tl)) return; brushOf(tl).size = n; syncPop(); dirty = true; }
+  function setBrush(n, tl) { tl = tl || popTool || tool; if (!usesBrush(tl) && tl !== "shape") return; settings[tl === "eraser" ? "eraser" : tl].size = n; syncPop(); dirty = true; }
+  function syncShape() {
+    const s = settings.shape;
+    document.querySelectorAll("#shapeKinds [data-kind]").forEach(b => b.classList.toggle("active", b.dataset.kind === s.kind));
+    document.querySelectorAll("#shapeStyles [data-fill]").forEach(b => b.classList.toggle("active", (b.dataset.fill === "1") === s.fill));
+    $("#shapeGlyph").textContent = { rect: s.fill ? "■" : "▭", oval: s.fill ? "●" : "◯", triangle: s.fill ? "▲" : "△",
+                                     diamond: s.fill ? "◆" : "◇", trapezoid: "⏢" }[s.kind];
+    if (popTool === "shape") $("#tpBrush").classList.toggle("hidden", s.fill);
+  }
   function setShape(r) { brushOf(popTool || tool).round = r; syncPop(); dirty = true; }
   // canvas cursor = the tool itself (pencil, eraser, bucket, dropper) with its tip on the hot spot; line and
   // rectangle keep a "+" for precise placement. "C" in a path is replaced by the current colour.
@@ -191,6 +203,44 @@ const Editor = (() => {
     let err = dx + dy;
     for (;;) { fn(x0, y0); if (x0 === x1 && y0 === y1) break; const e2 = 2 * err; if (e2 >= dy) { err += dy; x0 += sx; } if (e2 <= dx) { err += dx; y0 += sy; } }
   }
+  // Shape tool: rectangle, oval, triangle, diamond or trapezoid in the dragged box; outline (thickness = size) or
+  // filled. Shift keeps the box square. Cells are tested at their centres.
+  const POLYS = { triangle: [[.5, 0], [1, 1], [0, 1]], diamond: [[.5, 0], [1, .5], [.5, 1], [0, .5]],
+                  trapezoid: [[.25, 0], [.75, 0], [1, 1], [0, 1]] };
+  function inPoly(P, u, v) {
+    let inside = false;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+      const [xi, yi] = P[i], [xj, yj] = P[j];
+      if ((yi > v) !== (yj > v) && u < (xj - xi) * (v - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function shapeCells(d, fn) {
+    const s = settings.shape;
+    let [x1, y1] = d.cur;
+    if (d.square) {
+      const n = Math.max(Math.abs(x1 - d.x0), Math.abs(y1 - d.y0));
+      x1 = d.x0 + (x1 < d.x0 ? -n : n); y1 = d.y0 + (y1 < d.y0 ? -n : n);
+    }
+    const X = Math.min(d.x0, x1), Y = Math.min(d.y0, y1), W = Math.abs(x1 - d.x0) + 1, H = Math.abs(y1 - d.y0) + 1;
+    const inside = (i, j) => {
+      if (i < 0 || j < 0 || i >= W || j >= H) return false;
+      const u = (i + .5) / W, v = (j + .5) / H;
+      if (s.kind === "rect") return true;
+      if (s.kind === "oval") return (2 * u - 1) ** 2 + (2 * v - 1) ** 2 <= 1 + 0.6 / Math.max(W, H);
+      return inPoly(POLYS[s.kind], u, v);
+    };
+    const t = Math.max(1, s.size);
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+      if (!inside(i, j)) continue;
+      let edge = s.fill;
+      if (!edge) {   // outline: an outside cell within (Manhattan) distance t
+        for (let dj = -t; dj <= t && !edge; dj++) for (let di = -t; di <= t; di++)
+          if (Math.abs(di) + Math.abs(dj) <= t && !inside(i + di, j + dj)) { edge = true; break; }
+      }
+      if (edge) fn(X + i, Y + j);
+    }
+  }
   function rect(x0, y0, x1, y1, fn) {
     const [a, b] = [Math.min(x0, x1), Math.max(x0, x1)], [c, d] = [Math.min(y0, y1), Math.max(y0, y1)];
     for (let x = a; x <= b; x++) { fn(x, c); fn(x, d); }
@@ -214,7 +264,7 @@ const Editor = (() => {
     if (playing) setPlaying(false);
     cv.setPointerCapture(e.pointerId);
     const [x, y] = cellAt(e), erase = e.button === 2;
-    const tl = erase && (tool === "pencil" || tool === "line" || tool === "rect") ? "eraser" : tool;
+    const tl = erase && (tool === "pencil" || tool === "line") ? "eraser" : tool;
     if (tl === "move") { pushUndo(); drag = { tool: tl, x0: x, y0: y, lx: L().x, ly: L().y }; return; }
     if (tl === "pick") {
       const c = composite(), i = (y * sc.w + x) * 4;
@@ -223,7 +273,7 @@ const Editor = (() => {
     }
     pushUndo();
     if (tl === "fill") { flood(x, y, colorOf("fill")); stripDirty = true; return; }
-    drag = { tool: tl, x0: x, y0: y, last: [x, y], cur: [x, y], erase };
+    drag = { tool: tl, x0: x, y0: y, last: [x, y], cur: [x, y], erase, square: e.shiftKey };
     if (tl === "pencil" || tl === "eraser") paint(x, y, tl === "eraser" ? ERASE : colorOf("pencil"), brushOf(tl));
   });
   cv.addEventListener("pointermove", e => {
@@ -234,13 +284,16 @@ const Editor = (() => {
     if (drag.tool === "pencil" || drag.tool === "eraser") {
       line(drag.last[0], drag.last[1], x, y, (a, b) => paint(a, b, drag.tool === "eraser" ? ERASE : colorOf("pencil"), brushOf(drag.tool)));
       drag.last = [x, y];
-    } else drag.cur = [x, y];
+    } else { drag.cur = [x, y]; drag.square = e.shiftKey; }
   });
   cv.addEventListener("pointerup", () => {
-    if (drag && (drag.tool === "line" || drag.tool === "rect")) {
-      const c = drag.erase ? ERASE : colorOf(drag.tool);
-      const br = brushOf(drag.tool, drag.erase);
-      (drag.tool === "line" ? line : rect)(drag.x0, drag.y0, drag.cur[0], drag.cur[1], (a, b) => paint(a, b, c, br));
+    if (drag && drag.tool === "line") {
+      const c = drag.erase ? ERASE : colorOf("line"), br = brushOf("line", drag.erase);
+      line(drag.x0, drag.y0, drag.cur[0], drag.cur[1], (a, b) => paint(a, b, c, br));
+    }
+    if (drag && drag.tool === "shape") {
+      const c = drag.erase ? ERASE : colorOf("shape");
+      shapeCells(drag, (a, b) => setPx(a, b, c));
     }
     if (drag && drag.tool === "move") renderProps();
     drag = null; touch(); stripDirty = true;
@@ -548,6 +601,8 @@ const Editor = (() => {
   document.querySelectorAll("input[name=emode]").forEach(r => r.addEventListener("change", () => setMode(r.value)));
   document.querySelectorAll("#brushSizes [data-size]").forEach(b => b.addEventListener("click", () => setBrush(+b.dataset.size)));
   document.querySelectorAll("#brushShapes [data-shape]").forEach(b => b.addEventListener("click", () => setShape(b.dataset.shape === "round")));
+  document.querySelectorAll("#shapeKinds [data-kind]").forEach(b => b.addEventListener("click", () => { settings.shape.kind = b.dataset.kind; syncShape(); }));
+  document.querySelectorAll("#shapeStyles [data-fill]").forEach(b => b.addEventListener("click", () => { settings.shape.fill = b.dataset.fill === "1"; syncShape(); }));
   // The flyout opens after a short hover (so passing over a button on the way to the canvas doesn't open it), or
   // at once when moving between buttons while it's already open. Clicking a tool only selects it; on touch
   // screens, tapping the tool that's already selected toggles the flyout.
@@ -583,7 +638,7 @@ const Editor = (() => {
       const br = brushOf(tool), i = BRUSHES.indexOf(br.size) + (k === "]" ? 1 : -1);
       return setBrush(BRUSHES[Math.max(0, Math.min(BRUSHES.length - 1, i))], tool);
     }
-    const tools = { p: "pencil", e: "eraser", f: "fill", l: "line", r: "rect", i: "pick", m: "move" };
+    const tools = { p: "pencil", e: "eraser", f: "fill", l: "line", s: "shape", r: "shape", i: "pick", m: "move" };
     if (tools[k] && !e.ctrlKey && !e.metaKey) return setTool(tools[k]);
     if (k.startsWith("arrow") && tool === "move") {
       e.preventDefault(); pushUndo(); const l = L();
@@ -592,6 +647,6 @@ const Editor = (() => {
     }
   });
 
-  syncTints(); setTool("pencil"); setMode("anim"); requestAnimationFrame(frame); refreshOpenList();
+  syncTints(); syncShape(); setTool("pencil"); setMode("anim"); requestAnimationFrame(frame); refreshOpenList();
   return { addIconLayer, editIcon, openAnim, refreshOpenList };
 })();

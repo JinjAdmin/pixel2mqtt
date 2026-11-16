@@ -164,6 +164,7 @@ button.danger { color: var(--bad); }
   border: 1px dashed var(--line); border-radius: 4px; font-size: 13px; cursor: default; }
 .side .ly.bgrow .n { flex: 1; }
 .side .ly.bgrow input[type=color] { width: 24px; height: 18px; padding: 0; border: 1px solid var(--line); border-radius: 3px; background: none; }
-.tools button[data-tool=line], .tools button[data-tool=rect] { position: relative; }
-.tools button[data-tool=line]::after, .tools button[data-tool=rect]::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 5px;
+.tools button[data-tool=line], .tools button[data-tool=shape] { position: relative; }
+.tools button[data-tool=line]::after, .tools button[data-tool=shape]::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 5px;
   height: 3px; border-radius: 2px; background: var(--cur); }
+#shapeKinds button { font-size: 16px; }
