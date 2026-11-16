@@ -23,6 +23,18 @@ broker and Home Assistant for any number of displays. You get:
   Copies of built-ins are skipped. (Needs pixeld-h6631 v0.2.0 or newer.)
   *pixel2mqtt contains no artwork.* It reads the files from your own display and writes the results back to it.
 
+### Screenshots
+**Editor**: layers, frames, motion and opacity, with the colour palette and scene controls on the right.
+
+<img src="docs/screenshots/editor.png" alt="pixel2mqtt editor with a pixel-art smiley on the 52x32 canvas" width="900">
+
+**Library**: each display's animations and sounds; play, open in the editor, rename (Aa) or delete.
+**Displays**: adopted displays, network discovery and the bridge status.
+
+<img src="docs/screenshots/library.png" alt="pixel2mqtt library: animation and sound lists" width="600">
+
+<img src="docs/screenshots/displays.png" alt="pixel2mqtt displays tab: adopted display, network scan, bridge status" width="900">
+
 ### Animation editor
 Animations are built from **layers** (top of the list = drawn on top). Each layer has:
 - its own pixels, any size up to 256×256 (bigger than the screen for scrolling backgrounds);
