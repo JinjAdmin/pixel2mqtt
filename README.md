@@ -8,7 +8,8 @@ broker and Home Assistant for any number of displays. You get:
   and forwards commands to it. The displays themselves don't need MQTT credentials.
 - **A web editor:**
   - upload GIFs, PNGs (or any image the browser can open) and MP3/WAV/OGG sounds;
-  - browse each display's animations, icons and sounds, with previews, then play or delete them;
+  - browse each display's animations, icons and sounds, with previews, then play, rename or delete them;
+  - **remove duplicates**: identical animations collapse to one, keeping a real name over an `App …` copy;
   - a **layered animation editor** (see below);
   - draw new icons, including animated ones, and add them to the icon library;
   - see each display's free storage;
@@ -16,6 +17,10 @@ broker and Home Assistant for any number of displays. You get:
 - **Built-in artwork import.** One button converts the animations and icons that ship inside the display's own
   firmware (59 animations including 4 clock scenes, plus about 85 icons). The conversion uses a scene renderer
   tuned on real hardware: motion direction, layer order, static items and seamless loops.
+  The same button imports **scenes the Govee app sent to the display** before the custom firmware was installed
+  (anything you applied from the app, including community Share Space scenes). The app keeps no titles on the
+  device, so they arrive as `App <code>`: rename them with the **Aa** button and later imports keep your names.
+  Copies of built-ins are skipped. (Needs pixeld-h6631 v0.2.0 or newer.)
   *pixel2mqtt contains no artwork.* It reads the files from your own display and writes the results back to it.
 
 ### Animation editor
