@@ -125,10 +125,10 @@ def _app_normalise(data: bytes) -> bytes:
     return data
 
 
-def app_scenes(api):
+def app_scenes(api, skip=()):
     """{name: normalised bytes} for every distinct scene the Govee app left on the display (empty if none or if
     the firmware doesn't allow reading them)."""
-    out, seen = {}, set()
+    out, seen = {}, set(skip)   # skip: sha1 hex digests to leave out (e.g. the built-ins)
     for d in APP_DIRS:
         try:
             listing = api.res(f"{APP}/{d}")
@@ -156,8 +156,16 @@ def app_scenes(api):
 def plan(api):
     """List of (kind, device file name, fetch-and-convert callable) for everything importable from this device."""
     jobs = []
+    builtin = set()
     for src, name, clock in ANIMATIONS:
-        jobs.append(("anims", name + ".anim", lambda s=src: anim_bytes(api.res(f"{RES}/{s}"))))
+        try:
+            raw = api.res(f"{RES}/{src}")
+        except Exception as e:  # noqa: BLE001 - reported when the job runs
+            jobs.append(("anims", name + ".anim", lambda s=src: anim_bytes(api.res(f"{RES}/{s}"))))
+            log.debug("built-in %s: %s", src, e)
+        else:
+            builtin.add(hashlib.sha1(raw).hexdigest())
+            jobs.append(("anims", name + ".anim", lambda b=raw: anim_bytes(b)))
         if clock:
             jobs.append(("anims", name + ".clock", lambda c=clock: (c + "\n").encode()))
     for name, path in sorted(ICONS.items()):
@@ -175,7 +183,7 @@ def plan(api):
             if n.startswith(prefix) and n.endswith(".png"):
                 icon = out + n[len(prefix):-4].lower()
                 jobs.append(("icons", icon + ".pxi", lambda p=f"{SM}/{d}/{n}": icon_bytes(api.res(p))))
-    for name, data in app_scenes(api).items():
+    for name, data in app_scenes(api, skip=builtin).items():   # app copies of built-ins are left out
         jobs.append(("anims", name + ".anim", lambda b=data: anim_bytes(b)))
     return jobs
 
