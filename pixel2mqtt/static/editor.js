@@ -23,7 +23,16 @@ const Editor = (() => {
   const touch = () => { dirty = true; liveDirty = true; };
 
   /* ---------------------------------------------------------------- history */
-  function pushUndo() { const h = hist[mode]; h.undo.push({ sc: Scene.clone(sc), s: { ...sel[mode] } }); if (h.undo.length > 40) h.undo.shift(); h.redo = []; }
+  const docState = { anim: { name: "", edited: false, saved: false }, icon: { name: "", edited: false, saved: false } };
+  function markEdited(on = true) { docState[mode].edited = on; syncDoc(); }
+  function setDocName(name, saved) { docState[mode].name = name; docState[mode].saved = saved; $("#saveName").value = name; syncDoc(); }
+  function syncDoc() {
+    const d = docState[mode];
+    $("#docName").textContent = d.name || (mode === "icon" ? "Untitled icon" : "Untitled");
+    $("#docDirty").classList.toggle("hidden", !d.edited);
+    $("#delSceneBtn").disabled = !d.saved;
+  }
+  function pushUndo() { markEdited(); const h = hist[mode]; h.undo.push({ sc: Scene.clone(sc), s: { ...sel[mode] } }); if (h.undo.length > 40) h.undo.shift(); h.redo = []; }
   function restore(st) { docs[mode] = sc = st.sc; sel[mode] = st.s; fullRefresh(); }
   function undo() { const h = hist[mode]; if (h.undo.length) { h.redo.push({ sc: Scene.clone(sc), s: { ...sel[mode] } }); restore(h.undo.pop()); } }
   function redo() { const h = hist[mode]; if (h.redo.length) { h.undo.push({ sc: Scene.clone(sc), s: { ...sel[mode] } }); restore(h.redo.pop()); } }
@@ -319,47 +328,60 @@ const Editor = (() => {
     document.querySelector(`input[name=emode][value=${m}]`).checked = true;
     $("#iconSize").classList.toggle("hidden", m !== "icon");
     $("#grabBtn").disabled = m !== "anim";
-    $("#saveHint").textContent = m === "anim"
-      ? "Saves the scene (editable later) and bakes it into an animation on the display, which then appears in Home Assistant's Animation list."
-      : "Saves to the display's icon library (several frames = animated icon). Transparent pixels stay transparent.";
+    $("#saveName").value = docState[m].name; syncDoc();
     fullRefresh();
   }
   function setScene(s, m) {
     docs[m] = s; hist[m] = { undo: [], redo: [] }; sel[m] = { l: s.layers.length - 1, f: 0 }; t = 0;
     if (mode !== m) setMode(m); else { sc = s; fullRefresh(); }
   }
+  let savedScenes = [];
   async function refreshOpenList() {
-    let saved = [];
-    try { saved = await api("/scenes"); } catch (e) { /* server too old or offline */ }
-    const os = $("#openSel"); const keep = os.value;
-    os.replaceChildren(
-      el("optgroup", { label: "Saved scenes" }, ...(saved.length ? saved.map(s => el("option", { value: "s:" + s.name }, s.name)) : [el("option", { value: "", disabled: "" }, "(none yet)")])),
-      el("optgroup", { label: "Animations on the display" }, ...lib.anims.map(f => el("option", { value: "a:" + stem(f.name) }, stem(f.name)))));
-    if (keep) os.value = keep;
+    try { savedScenes = await api("/scenes"); } catch (e) { savedScenes = []; }
+    if (!$("#docMenu").classList.contains("hidden")) renderDocList();
+    const d = docState[mode];
+    d.saved = savedScenes.some(s => s.name === d.name + (mode === "icon" ? " (icon)" : "")); syncDoc();
   }
-  async function openSelected() {
-    const v = $("#openSel").value; if (!v) return;
+  function renderDocList() {
+    const q = $("#docFilter").value.trim().toLowerCase(), hit = n => !q || n.toLowerCase().includes(q);
+    const item = (label, sub, fn) => el("button", { cls: "docitem", onclick: () => { closeMenus(); fn(); } }, label, sub ? el("span", { cls: "muted small" }, sub) : "");
+    const saved = savedScenes.filter(s => hit(s.name)), anims = lib.anims.map(f => stem(f.name)).filter(hit);
+    $("#docList").replaceChildren(
+      el("div", { cls: "dochead" }, "Saved scenes (editable)"),
+      ...(saved.length ? saved.map(s => item(s.name, "", () => openScene(s.name))) : [el("div", { cls: "muted small docnone" }, q ? "no match" : "none yet: Save creates one")]),
+      el("div", { cls: "dochead" }, "Animations on the display"),
+      ...(anims.length ? anims.map(n => item(n, "", () => openAnim(n))) : [el("div", { cls: "muted small docnone" }, cur ? "no match" : "adopt a display first")]));
+  }
+  function okToDiscard() {
+    const d = docState[mode];
+    return !d.edited || confirm(`Discard the unsaved changes to "${d.name || "Untitled"}"?`);
+  }
+  async function openScene(name) {
+    if (!okToDiscard()) return;
     try {
-      if (v.startsWith("s:")) {
-        const s = Scene.fromJSON(await api(`/scenes/${enc(v.slice(2))}`));
-        setScene(s, s.w === PW && s.h === PH && s.bg ? "anim" : "icon"); $("#saveName").value = v.slice(2).replace(/ \(icon\)$/, "");
-      } else await openAnim(v.slice(2));
-      toast("Opened " + v.slice(2));
+      const s = Scene.fromJSON(await api(`/scenes/${enc(name)}`)), m = s.w === PW && s.h === PH && s.bg ? "anim" : "icon";
+      setScene(s, m); setDocName(name.replace(/ \(icon\)$/, ""), true); markEdited(false);
+      toast("Opened " + name);
     } catch (e) { toast(e.message, true); }
   }
   async function openAnim(name) {
     if (!cur) return toast("Adopt a display first", true);
+    if (mode === "anim" && !okToDiscard()) return;
     try {
       toast("Opening " + name + "…");
       const s = Scene.fromJSON(await api(`/displays/${cur}/scene?anim=${enc(name)}`));
-      setScene(s, "anim"); $("#saveName").value = name;
+      setScene(s, "anim"); setDocName(name, savedScenes.some(x => x.name === name)); markEdited(false);
       toast(`Opened "${name}": ${s.layers.length} layer${s.layers.length > 1 ? "s" : ""}`);
     } catch (e) { toast(e.message, true); }
   }
-  async function save() {
+  async function save(asNew) {
     if (!cur) return toast("Adopt a display first", true);
-    const name = $("#saveName").value.trim();
-    if (!name) { $("#saveName").focus(); return toast("Give it a name first", true); }
+    let name = $("#saveName").value.trim();
+    if (!name || asNew) {
+      const n = prompt(mode === "icon" ? "Name for this icon" : "Name for this animation", name);
+      if (n === null || !n.trim()) return;
+      name = n.trim();
+    }
     try {
       const { frames } = Scene.bake(sc, 450);
       let r;
@@ -367,11 +389,13 @@ const Editor = (() => {
         r = await postRaw(`/displays/${cur}/upload?kind=anims&name=${enc(name)}`, Scene.buildPXA(frames, sc.w, sc.h));
         await api(`/scenes/${enc(name)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: Scene.toJSON(sc) });
         toast(`Saved "${stem(r.name)}" (${frames.length} frame${frames.length > 1 ? "s" : ""}) to the display and as an editable scene`);
+        setDocName(stem(r.name), true); markEdited(false);
         await loadLibrary(); $("#animSel").value = stem(r.name);
       } else {
         r = await postRaw(`/displays/${cur}/upload?kind=icons&name=${enc(name)}`, Scene.buildPXI(frames.slice(0, 64), sc.w, sc.h));
         await api(`/scenes/${enc(name + " (icon)")}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: Scene.toJSON(sc) });
         toast(`Saved icon "${stem(r.name)}"` + (frames.length > 1 ? ` (${Math.min(64, frames.length)} frames)` : ""));
+        setDocName(stem(r.name), true); markEdited(false);
         iconCache.clear(); await loadLibrary();
       }
       refreshStorage(); refreshOpenList();
@@ -393,7 +417,7 @@ const Editor = (() => {
       const ic = await getIcon(name), s = Scene.newScene(ic.w, ic.h, null);
       s.layers[0].name = name;
       s.layers[0].frames = ic.frames.map(f => ({ w: ic.w, h: ic.h, delay: f.delay, rgba: new Uint8ClampedArray(f.rgba) }));
-      setScene(s, "icon"); $("#saveName").value = name; showTab("editor");
+      setScene(s, "icon"); setDocName(name, false); markEdited(false); showTab("editor");
     } catch (e) { toast(e.message, true); }
   }
   async function imageLayer(file) {
@@ -467,18 +491,28 @@ const Editor = (() => {
     const w = Math.max(1, Math.min(PW, +$("#iconW").value | 0)), h = Math.max(1, Math.min(PH, +$("#iconH").value | 0));
     pushUndo(); sc.w = w; sc.h = h; fullRefresh();
   });
-  $("#openBtn").addEventListener("click", openSelected);
   $("#newBtn").addEventListener("click", () => {
-    if (!confirm("Start a new, empty " + (mode === "anim" ? "animation" : "icon") + "? Unsaved changes are lost (Undo still works).")) return;
+    if (!okToDiscard()) return;
     pushUndo(); const s = mode === "anim" ? Scene.newScene(PW, PH, [0, 0, 0]) : Scene.newScene(sc.w, sc.h, null);
-    docs[mode] = sc = s; sel[mode] = { l: 0, f: 0 }; t = 0; $("#saveName").value = ""; fullRefresh();
+    docs[mode] = sc = s; sel[mode] = { l: 0, f: 0 }; t = 0; setDocName("", false); markEdited(false); fullRefresh();
   });
+  function closeMenus() { $("#docMenu").classList.add("hidden"); $("#docMore").classList.add("hidden"); }
+  $("#docBtn").addEventListener("click", e => {
+    e.stopPropagation(); const open = $("#docMenu").classList.contains("hidden"); closeMenus();
+    if (open) { $("#docFilter").value = ""; renderDocList(); $("#docMenu").classList.remove("hidden"); $("#docFilter").focus(); refreshOpenList(); }
+  });
+  $("#docMoreBtn").addEventListener("click", e => { e.stopPropagation(); const open = $("#docMore").classList.contains("hidden"); closeMenus(); if (open) $("#docMore").classList.remove("hidden"); });
+  $("#docFilter").addEventListener("input", renderDocList);
+  $("#docMenu").addEventListener("click", e => e.stopPropagation());
+  document.addEventListener("click", closeMenus);
+  $("#saveAsBtn").addEventListener("click", () => { closeMenus(); save(true); });
   $("#delSceneBtn").addEventListener("click", async () => {
-    const name = $("#saveName").value.trim() + (mode === "icon" ? " (icon)" : ""); if (!name.trim()) return;
+    closeMenus();
+    const name = docState[mode].name + (mode === "icon" ? " (icon)" : ""); if (!docState[mode].saved) return;
     if (!confirm(`Delete the saved scene "${name}"? The animation on the display stays.`)) return;
     try { await api(`/scenes/${enc(name)}`, { method: "DELETE" }); toast("Deleted scene " + name); refreshOpenList(); } catch (e) { toast(e.message, true); }
   });
-  $("#saveBtn").addEventListener("click", save);
+  $("#saveBtn").addEventListener("click", () => save(false));
   $("#grabBtn").addEventListener("click", async () => {
     if (!cur) return;
     try {

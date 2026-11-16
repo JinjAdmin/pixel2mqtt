@@ -142,3 +142,25 @@ dialog .chk { font-size: 13px; }
 .toolpop .tp-sizes button.active { background: var(--accent); color: #141414; border-color: var(--accent); }
 .toolpop .tp-sizes i { display: block; width: var(--s); height: var(--s); background: currentColor; }
 .toolpop .palette { grid-template-columns: repeat(6, 1fr); }
+
+/* ---- document bar (scene name, open, new, save) */
+.docbar { position: relative; display: flex; align-items: center; gap: 6px; }
+.docname { min-width: 180px; max-width: 320px; text-align: left; display: flex; gap: 6px; align-items: center; font-weight: 600; }
+.docname #docName { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.docname .dirty { color: var(--accent); font-size: 10px; }
+.docmenu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 25; width: 300px; max-height: 60vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 6px 24px rgba(0,0,0,.5); padding: 8px; }
+.docmenu.small { width: 220px; left: auto; right: 0; display: flex; flex-direction: column; gap: 4px; }
+.docmenu.small button { text-align: left; }
+.docmenu.hidden { display: none; }
+.docmenu input { width: 100%; margin-bottom: 6px; }
+.doclist { display: flex; flex-direction: column; }
+.dochead { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 8px 4px 4px; }
+.docitem { text-align: left; background: transparent; border: 0; padding: 5px 8px; border-radius: 4px; }
+.docitem:hover { background: var(--panel2); }
+.docnone { padding: 2px 8px; }
+button.danger { color: var(--bad); }
+.side .ly.bgrow { display: flex; align-items: center; gap: 6px; margin-top: 3px; padding: 4px 6px; background: var(--panel2);
+  border: 1px dashed var(--line); border-radius: 4px; font-size: 13px; cursor: default; }
+.side .ly.bgrow .n { flex: 1; }
+.side .ly.bgrow input[type=color] { width: 24px; height: 18px; padding: 0; border: 1px solid var(--line); border-radius: 3px; background: none; }

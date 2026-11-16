@@ -61,6 +61,23 @@
           <input id="iconW" type="number" min="1" max="52" value="16"> × <input id="iconH" type="number" min="1" max="32" value="16">
           <button id="iconResize">Resize</button>
         </span>
+        <span class="docbar">
+          <button id="docBtn" class="docname" title="The scene you're editing. Click to open another one">
+            <span id="docName">Untitled</span><span id="docDirty" class="dirty hidden" title="Unsaved changes">●</span> ▾</button>
+          <button id="newBtn" title="Start a new, empty scene">New</button>
+          <button id="saveBtn" class="primary" title="Save: keeps the scene editable and bakes it onto the display (icons go to the icon library)">Save</button>
+          <button id="docMoreBtn" title="More">⋮</button>
+          <div id="docMenu" class="docmenu hidden">
+            <input id="docFilter" placeholder="Filter…" autocomplete="off">
+            <div id="docList" class="doclist"></div>
+          </div>
+          <div id="docMore" class="docmenu small hidden">
+            <button id="saveAsBtn">Save as…</button>
+            <button id="pngBtn">Export PNG</button>
+            <button id="delSceneBtn" class="danger">Delete this saved scene</button>
+          </div>
+          <input id="saveName" type="hidden">
+        </span>
         <span class="grow"></span>
         <label class="toggle" title="Stream the canvas to the display at ~30 fps"><input id="liveChk" type="checkbox"> <b>Live on display</b></label>
       </div>
@@ -86,6 +103,10 @@
       <div class="card">
         <h3>Layers <span class="muted small">(top first)</span></h3>
         <div id="layerList" class="layerlist"></div>
+        <div class="ly bgrow" title="Background: drawn under every layer">
+          <input id="bgColor" type="color" value="#000000"><span class="n">Background</span>
+          <label class="small" id="bgNoneWrap"><input id="bgNone" type="checkbox"> transparent</label>
+        </div>
         <div class="btns">
           <button id="lyDup" title="Duplicate the selected layer">⧉ Duplicate</button>
           <button id="lyUp" title="Move the selected layer up">▲</button><button id="lyDown" title="Move the selected layer down">▼</button>
@@ -115,14 +136,6 @@
             <label>Blink <input id="pBlink" type="number" min="0" max="10000" step="50"> ms <span class="muted small">(0 = off)</span></label>
           </div>
         </div>
-      </div>
-      <div class="card">
-        <h3>Scene</h3>
-        <div class="row"><label>Background <input id="bgColor" type="color" value="#000000"></label><label class="small" id="bgNoneWrap"><input id="bgNone" type="checkbox"> transparent</label></div>
-        <div class="row"><select id="openSel"></select><button id="openBtn" title="Open as layers">Open</button><button id="newBtn" title="Start a new empty scene">New</button></div>
-        <div class="row"><input id="saveName" placeholder="name"><button id="saveBtn" class="primary">Save</button></div>
-        <p class="hint" id="saveHint"></p>
-        <div class="btns"><button id="pngBtn">Export PNG</button><button id="delSceneBtn" title="Delete the saved scene with this name (not the animation on the display)">Delete saved scene</button></div>
       </div>
       <div class="card">
         <h3>Test on the display</h3>
