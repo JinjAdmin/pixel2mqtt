@@ -902,7 +902,7 @@ const Editor = (() => {
   bgPop.addEventListener("click", e => e.stopPropagation());
   document.addEventListener("click", () => { if (!bgPop.classList.contains("hidden")) { bgPop.classList.add("hidden"); if (sc.bg) useColor(sc.bg); } });
   document.addEventListener("keydown", e => {
-    if (e.target.matches("input, select, textarea") || !$("#tab-editor").classList.contains("active")) return;
+    if ((e.target.matches && e.target.matches("input, select, textarea")) || !$("#tab-editor").classList.contains("active")) return;
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); return; }
