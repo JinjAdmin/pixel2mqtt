@@ -187,3 +187,23 @@ button.danger { color: var(--bad); }
 .docbar .docname { min-width: 120px; }
 .allfr { display: inline-flex; align-items: center; gap: 4px; margin-left: 12px; font-size: 12px; color: var(--muted); }
 .allfr input { width: 64px; }
+.helpbtn { background: transparent; width: 30px; padding: 5px 0; border-radius: 99px; border-color: var(--line); font-weight: 700; }
+.helpshade { position: fixed; inset: 0; background: rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 20; }
+.helpshade.open { opacity: 1; pointer-events: auto; }
+.helpdrawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(620px, 100vw); background: var(--panel); border-left: 1px solid var(--line);
+  box-shadow: -8px 0 24px rgba(0,0,0,.4); transform: translateX(100%); transition: transform .25s ease; z-index: 21; display: flex; flex-direction: column; }
+.helpdrawer.open { transform: none; }
+.helphead { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.helphead a.btnlike { text-decoration: none; color: var(--text); }
+.helpbody { overflow-y: auto; padding: 4px 20px 32px; line-height: 1.55; }
+.helpbody h1 { font-size: 22px; margin: 16px 0 8px; }
+.helpbody h2 { font-size: 17px; margin: 26px 0 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+.helpbody h3 { font-size: 15px; margin: 18px 0 6px; }
+.helpbody img { max-width: 100%; border: 1px solid var(--line); border-radius: 6px; display: block; margin: 8px 0; }
+.helpbody a { color: var(--accent2); }
+.helpbody ul, .helpbody ol { padding-left: 22px; }
+.helpbody li { margin: 3px 0; }
+.helpbody table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
+.helpbody th, .helpbody td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+.helpbody th { background: var(--panel2); }
+.helpbody pre { background: var(--panel2); padding: 8px; border-radius: 6px; overflow-x: auto; }

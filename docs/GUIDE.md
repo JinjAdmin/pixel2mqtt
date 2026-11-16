@@ -1,6 +1,6 @@
 # Editor guide
 
-This guide covers how to use the pixel2mqtt editor to make animations and icons for the 52×32 display. To install pixel2mqtt, see the [README](../README.md).
+This guide covers how to use the pixel2mqtt editor to make animations and icons for the 52×32 display. To install pixel2mqtt, see the [README](../README.md). Inside pixel2mqtt, the **?** button at the top right opens this guide in a side drawer.
 
 ![The editor](guide/editor.png)
 

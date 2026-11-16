@@ -18,8 +18,20 @@
     <button data-tab="editor" class="tab active">Editor</button>
     <button data-tab="library" class="tab">Library</button>
     <button data-tab="displays" class="tab">Displays</button>
+    <button id="helpBtn" class="helpbtn" title="Editor guide" aria-label="Help">?</button>
   </nav>
 </header>
+<div id="helpShade" class="helpshade"></div>
+<aside id="helpDrawer" class="helpdrawer" aria-hidden="true" aria-label="Editor guide">
+  <div class="helphead">
+    <strong>Editor guide</strong>
+    <span class="grow"></span>
+    <button id="helpReload" title="Load the latest version">Reload</button>
+    <a id="helpGh" class="btnlike" target="_blank" rel="noopener">Open on GitHub</a>
+    <button id="helpClose" title="Close (Esc)" aria-label="Close">✕</button>
+  </div>
+  <div id="helpBody" class="helpbody"></div>
+</aside>
 
 <main>
 <!-- ============================================================ editor -->
@@ -231,5 +243,6 @@
 <script src="scene.js"></script>
 <script src="app.js"></script>
 <script src="editor.js"></script>
+<script src="help.js"></script>
 </body>
 </html>
