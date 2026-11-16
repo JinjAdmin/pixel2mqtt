@@ -145,11 +145,26 @@ const Editor = (() => {
   }
   function setBrush(n, tl) { brushOf(tl || popTool || tool).size = n; syncPop(); dirty = true; }
   function setShape(r) { brushOf(popTool || tool).round = r; syncPop(); dirty = true; }
-  function cursorFor(tl) {  // a "+" in the current colour (white for the eraser), with a dark outline
+  // canvas cursor = the tool itself (pencil, eraser, bucket, dropper) with its tip on the hot spot; line and
+  // rectangle keep a "+" for precise placement. "C" in a path is replaced by the current colour.
+  const CURSORS = {
+    pencil: { hot: [3, 21], paths: ["M3 21l1.2-4.2L14.6 6.4a2 2 0 0 1 2.8 0l.2.2a2 2 0 0 1 0 2.8L7.2 19.8z|C", "M3 21l1.2-4.2 3 3z|#fff"] },
+    eraser: { hot: [6, 18], paths: ["M7.5 19.5L3 15a1.5 1.5 0 0 1 0-2.1l8.9-8.9a1.5 1.5 0 0 1 2.1 0l5 5a1.5 1.5 0 0 1 0 2.1l-8.4 8.4z|#f4f4f4", "M3 15a1.5 1.5 0 0 1 0-2.1l4-4 7 7-4.5 4.5H7.5z|#ff7a9c"] },
+    fill:   { hot: [20, 21], paths: ["M2.6 10.2L10 2.8l7.2 7.2-6.6 6.6a1.4 1.4 0 0 1-2 0L2.6 12.2a1.4 1.4 0 0 1 0-2z|#e8e8e8", "M2.6 10.2h14.6L10.6 16.6a1.4 1.4 0 0 1-2 0L2.6 12.2a1.4 1.4 0 0 1 0-2z|C", "M20 14.5c.9 1.6 1.6 2.6 1.6 3.6a1.6 1.6 0 0 1-3.2 0c0-1 .7-2 1.6-3.6z|C"] },
+    pick:   { hot: [3, 21], paths: ["M20.4 3.6a2.4 2.4 0 0 0-3.4 0l-2.6 2.6-1.2-1.2-1.6 1.6 6 6 1.6-1.6-1.2-1.2 2.6-2.6a2.4 2.4 0 0 0 0-3.4z|#e8e8e8", "M13 8l-7.6 7.6L3 21l5.4-2.4L16 11z|#ffffff"] },
+  };
+  function cursorFor(tl) {
     if (tl === "move") return "move";
-    const c = tl === "eraser" || tl === "pick" ? "#ffffff" : hex(color);
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='19' height='19'><path d='M9.5 1v17M1 9.5h17' stroke='%23000' stroke-width='4.5'/><path d='M9.5 2v15M2 9.5h15' stroke='${c.replace("#", "%23")}' stroke-width='2'/></svg>`;
-    return `url("data:image/svg+xml,${svg}") 9 9, crosshair`;
+    const col = hex(color), cur = CURSORS[tl];
+    let svg;
+    if (cur) {
+      const body = cur.paths.map(p => { const [d, f] = p.split("|"); return `<path d='${d}' fill='${f === "C" ? col : f}'/>`; }).join("");
+      // dark outline first, then the coloured shapes on top
+      svg = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><g stroke='#000' stroke-width='3' stroke-linejoin='round'>${body}</g><g stroke='#000' stroke-width='0.9' stroke-linejoin='round'>${body}</g></svg>`;
+      return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${cur.hot[0]} ${cur.hot[1]}, crosshair`;
+    }
+    svg = `<svg xmlns='http://www.w3.org/2000/svg' width='19' height='19'><path d='M9.5 1v17M1 9.5h17' stroke='#000' stroke-width='4.5'/><path d='M9.5 2v15M2 9.5h15' stroke='${col}' stroke-width='2'/></svg>`;
+    return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 9 9, crosshair`;
   }
   function getPx(x, y) { const i = layerIndex(x, y); return i < 0 ? null : Array.from(F().rgba.subarray(i, i + 4)).join(); }
   function line(x0, y0, x1, y1, fn) {
