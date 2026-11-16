@@ -34,6 +34,18 @@
       <button data-tool="pick" title="Pick colour (I)">⊙</button>
       <button data-tool="move" title="Move layer (M)">✥</button>
       <hr>
+      <div class="brushes" id="brushSizes" title="Brush size for pencil, eraser, line and rectangle ([ and ])">
+        <button data-size="1" class="active"><i style="--s:2px"></i></button>
+        <button data-size="2"><i style="--s:4px"></i></button>
+        <button data-size="3"><i style="--s:6px"></i></button>
+        <button data-size="4"><i style="--s:8px"></i></button>
+        <button data-size="6"><i style="--s:12px"></i></button>
+      </div>
+      <div class="brushes shapes" id="brushShapes" title="Brush shape">
+        <button data-shape="square" class="active" title="Square brush">■</button>
+        <button data-shape="round" title="Round brush">●</button>
+      </div>
+      <hr>
       <button id="undoBtn" title="Undo (Ctrl+Z)">↶</button>
       <button id="redoBtn" title="Redo (Ctrl+Y)">↷</button>
     </div>

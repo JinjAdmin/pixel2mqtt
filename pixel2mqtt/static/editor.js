@@ -13,6 +13,8 @@ const Editor = (() => {
   const sel = { anim: { l: 0, f: 0 }, icon: { l: 0, f: 0 } };
   let mode = "anim", sc = docs.anim, tool = "pencil", color = [255, 136, 0, 255];
   let playing = false, t = 0, t0 = 0, loopLen = 1000, drag = null, hover = null, dirty = true, cell = 20, stripDirty = true;
+  const BRUSHES = [1, 2, 3, 4, 6];
+  let brush = 1, round = false;   // brush size and shape for pencil, eraser, line and rectangle
 
   const L = () => sc.layers[sel[mode].l];
   const F = () => { const l = L(); return l.frames[Math.min(sel[mode].f, l.frames.length - 1)]; };
@@ -62,9 +64,15 @@ const Editor = (() => {
     }
     if (drag && (drag.tool === "line" || drag.tool === "rect") && drag.cur) {
       g.fillStyle = hex(color) + "cc";
-      (drag.tool === "line" ? line : rect)(drag.x0, drag.y0, drag.cur[0], drag.cur[1], (x, y) => g.fillRect(x * cell, y * cell, cell, cell));
+      (drag.tool === "line" ? line : rect)(drag.x0, drag.y0, drag.cur[0], drag.cur[1], (x, y) => stamp(x, y, (a, b) => g.fillRect(a * cell, b * cell, cell, cell)));
     }
-    if (hover && !drag && tool !== "move" && !playing) { g.strokeStyle = "rgba(255,255,255,.6)"; g.lineWidth = 1; g.strokeRect(hover[0] * cell + .5, hover[1] * cell + .5, cell - 1, cell - 1); }
+    if (hover && !drag && tool !== "move" && !playing) {
+      g.strokeStyle = "rgba(255,255,255,.6)"; g.lineWidth = 1;
+      if (usesBrush(tool) && brush > 1) {   // shade exactly the cells the brush will paint
+        g.fillStyle = "rgba(255,255,255,.22)";
+        stamp(hover[0], hover[1], (a, b) => g.fillRect(a * cell, b * cell, cell, cell));
+      } else g.strokeRect(hover[0] * cell + .5, hover[1] * cell + .5, cell - 1, cell - 1);
+    }
   }
   function forEachLayerPixel(l, f, ox, oy, fn) {
     for (let y = 0; y < sc.h; y++) {
@@ -94,6 +102,24 @@ const Editor = (() => {
     return (sy * f.w + sx) * 4;
   }
   function setPx(x, y, c) { const i = layerIndex(x, y); if (i >= 0) { F().rgba.set(c, i); touch(); } }
+  const usesBrush = tl => tl === "pencil" || tl === "eraser" || tl === "line" || tl === "rect";
+  function stamp(x, y, fn) {  // the brush around (x, y); even sizes extend right/down
+    const a = Math.floor((brush - 1) / 2), b = brush - 1 - a, c = (b - a) / 2, r2 = (brush * brush - brush) / 4;
+    for (let dy = -a; dy <= b; dy++) for (let dx = -a; dx <= b; dx++) {
+      if (round && brush > 2 && (dx - c) ** 2 + (dy - c) ** 2 > r2) continue;   // round: skip the corners
+      fn(x + dx, y + dy);
+    }
+  }
+  const paint = (x, y, c) => stamp(x, y, (a, b) => setPx(a, b, c));
+  function setBrush(n) {
+    brush = n; dirty = true;
+    document.querySelectorAll("#brushSizes [data-size]").forEach(b => b.classList.toggle("active", +b.dataset.size === n));
+  }
+  function setShape(r) {
+    round = r; dirty = true;
+    document.querySelectorAll("#brushShapes [data-shape]").forEach(b => b.classList.toggle("active", (b.dataset.shape === "round") === r));
+    document.querySelectorAll("#brushSizes i").forEach(i => { i.style.borderRadius = r ? "50%" : "0"; });
+  }
   function getPx(x, y) { const i = layerIndex(x, y); return i < 0 ? null : Array.from(F().rgba.subarray(i, i + 4)).join(); }
   function line(x0, y0, x1, y1, fn) {
     const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
@@ -133,7 +159,7 @@ const Editor = (() => {
     pushUndo();
     if (tl === "fill") { flood(x, y, color); stripDirty = true; return; }
     drag = { tool: tl, x0: x, y0: y, last: [x, y], cur: [x, y], erase };
-    if (tl === "pencil" || tl === "eraser") setPx(x, y, tl === "eraser" ? ERASE : color);
+    if (tl === "pencil" || tl === "eraser") paint(x, y, tl === "eraser" ? ERASE : color);
   });
   cv.addEventListener("pointermove", e => {
     const [x, y] = cellAt(e);
@@ -141,14 +167,14 @@ const Editor = (() => {
     if (!drag) return;
     if (drag.tool === "move") { L().x = drag.lx + x - drag.x0; L().y = drag.ly + y - drag.y0; touch(); return; }
     if (drag.tool === "pencil" || drag.tool === "eraser") {
-      line(drag.last[0], drag.last[1], x, y, (a, b) => setPx(a, b, drag.tool === "eraser" ? ERASE : color));
+      line(drag.last[0], drag.last[1], x, y, (a, b) => paint(a, b, drag.tool === "eraser" ? ERASE : color));
       drag.last = [x, y];
     } else drag.cur = [x, y];
   });
   cv.addEventListener("pointerup", () => {
     if (drag && (drag.tool === "line" || drag.tool === "rect")) {
       const c = drag.erase ? ERASE : color;
-      (drag.tool === "line" ? line : rect)(drag.x0, drag.y0, drag.cur[0], drag.cur[1], (a, b) => setPx(a, b, c));
+      (drag.tool === "line" ? line : rect)(drag.x0, drag.y0, drag.cur[0], drag.cur[1], (a, b) => paint(a, b, c));
     }
     if (drag && drag.tool === "move") renderProps();
     drag = null; touch(); stripDirty = true;
@@ -398,6 +424,8 @@ const Editor = (() => {
   });
   document.querySelectorAll("#tools [data-tool]").forEach(b => b.addEventListener("click", () => setTool(b.dataset.tool)));
   document.querySelectorAll("input[name=emode]").forEach(r => r.addEventListener("change", () => setMode(r.value)));
+  document.querySelectorAll("#brushSizes [data-size]").forEach(b => b.addEventListener("click", () => setBrush(+b.dataset.size)));
+  document.querySelectorAll("#brushShapes [data-shape]").forEach(b => b.addEventListener("click", () => setShape(b.dataset.shape === "round")));
   $("#undoBtn").addEventListener("click", undo);
   $("#redoBtn").addEventListener("click", redo);
   $("#color").addEventListener("input", e => setColor([...unhex(e.target.value), 255]));
@@ -408,6 +436,10 @@ const Editor = (() => {
     if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); return; }
     if (k === " ") { e.preventDefault(); setPlaying(!playing); return; }
+    if (k === "[" || k === "]") {  // brush size down/up
+      const i = BRUSHES.indexOf(brush) + (k === "]" ? 1 : -1);
+      return setBrush(BRUSHES[Math.max(0, Math.min(BRUSHES.length - 1, i))]);
+    }
     const tools = { p: "pencil", e: "eraser", f: "fill", l: "line", r: "rect", i: "pick", m: "move" };
     if (tools[k] && !e.ctrlKey && !e.metaKey) return setTool(tools[k]);
     if (k.startsWith("arrow") && tool === "move") {
