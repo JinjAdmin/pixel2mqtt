@@ -168,3 +168,20 @@ button.danger { color: var(--bad); }
 .tools button[data-tool=line]::after, .tools button[data-tool=shape]::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 5px;
   height: 3px; border-radius: 2px; background: var(--cur); }
 #shapeKinds button { font-size: 16px; }
+
+/* ---- projects (start screen + document bar) */
+.projhome { max-width: 900px; }
+.newrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+.newicon { display: inline-flex; gap: 4px; }
+.projlist { display: flex; flex-direction: column; gap: 4px; }
+.projrow { display: grid; grid-template-columns: 110px 1fr auto auto auto auto; align-items: center; gap: 8px; padding: 5px 8px;
+  background: var(--panel2); border-radius: 6px; }
+.projrow .projname { text-align: left; background: none; border: 0; font-weight: 600; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge { font-size: 11px; padding: 2px 7px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.chip.draft { color: var(--muted); }
+.chip.ok { color: var(--ok, #6fcf97); border-color: currentColor; }
+.chip.warn { color: var(--accent); border-color: currentColor; }
+#continueRow { margin-bottom: 8px; }
+@media (max-width: 700px) { .projrow { grid-template-columns: 1fr auto; } .projrow .badge, .projrow .muted { display: none; } }
+.docbar { flex-wrap: nowrap; white-space: nowrap; }
+.docbar .docname { min-width: 120px; }

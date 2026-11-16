@@ -167,7 +167,7 @@
   function b64(u8) { if (typeof Buffer !== "undefined") return Buffer.from(u8).toString("base64"); let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
   function unb64(s) { if (typeof Buffer !== "undefined") return new Uint8ClampedArray(Buffer.from(s, "base64")); const b = atob(s), u = new Uint8ClampedArray(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
   function toJSON(scene) {
-    return JSON.stringify({ version: 1, w: scene.w, h: scene.h, bg: scene.bg, layers: scene.layers.map(l => Object.assign({}, l, {
+    return JSON.stringify({ version: 1, w: scene.w, h: scene.h, bg: scene.bg, meta: scene.meta, layers: scene.layers.map(l => Object.assign({}, l, {
       frames: l.frames.map(f => ({ w: f.w, h: f.h, delay: f.delay, rgba: b64(f.rgba) })) })) });
   }
   function fromJSON(text) {

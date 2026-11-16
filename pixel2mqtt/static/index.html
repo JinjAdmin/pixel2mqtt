@@ -24,7 +24,27 @@
 <main>
 <!-- ============================================================ editor -->
 <section id="tab-editor" class="tabpane active">
-  <div class="editor">
+  <div id="projHome" class="projhome">
+    <div class="card">
+      <h3>New project</h3>
+      <div class="newrow">
+        <button id="newAnimBtn" class="primary">+ New animation <span class="small">52×32</span></button>
+        <span class="newicon"><button id="newIconBtn">+ New icon</button>
+          <select id="newIconSize" title="Icon size"><option value="8x8">8×8</option><option value="16x16" selected>16×16</option><option value="24x24">24×24</option><option value="32x32">32×32</option><option value="custom">custom…</option></select></span>
+        <label class="btnlike" title="Open a project file exported from pixel2mqtt (.pixel2mqtt.json)">Import project file<input id="importProj" type="file" accept=".json,application/json" hidden></label>
+      </div>
+      <div class="newrow">
+        <span class="muted small">Start from an animation on the display (opens a copy; the original isn't touched):</span>
+        <select id="fromDisplaySel"></select><button id="fromDisplayBtn">Open a copy</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Your projects <span class="muted small">(saved in pixel2mqtt, not on the display)</span></h3>
+      <div id="continueRow"></div>
+      <div id="projList" class="projlist"></div>
+    </div>
+  </div>
+  <div class="editor hidden" id="editorMain">
     <div class="tools" id="tools">
       <button data-tool="pencil" class="active" title="Pencil (P) - hover for size, shape and colour"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="tint" d="M4 20l1.2-4.2L15.6 5.4a2 2 0 0 1 2.8 0l.2.2a2 2 0 0 1 0 2.8L8.2 18.8z"/><path class="ink" d="M4 20l1.2-4.2 3 3zM14.2 6.8l3 3"/></svg></button>
       <button data-tool="eraser" title="Eraser (E) - hover for size and shape"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="ink" d="M8.5 19.5L4 15a1.5 1.5 0 0 1 0-2.1l8.9-8.9a1.5 1.5 0 0 1 2.1 0l5 5a1.5 1.5 0 0 1 0 2.1l-8.4 8.4zM8 9l7 7M8.5 19.5H20"/></svg></button>
@@ -63,28 +83,21 @@
     </div>
     <div class="stage">
       <div class="stagebar">
-        <label class="seg"><input type="radio" name="emode" value="anim" checked> Animation 52×32</label>
-        <label class="seg"><input type="radio" name="emode" value="icon"> Icon</label>
-        <span id="iconSize" class="hidden">
-          <input id="iconW" type="number" min="1" max="52" value="16"> × <input id="iconH" type="number" min="1" max="32" value="16">
-          <button id="iconResize">Resize</button>
-        </span>
         <span class="docbar">
-          <button id="docBtn" class="docname" title="The scene you're editing. Click to open another one">
-            <span id="docName">Untitled</span><span id="docDirty" class="dirty hidden" title="Unsaved changes">●</span> ▾</button>
-          <button id="newBtn" title="Start a new, empty scene">New</button>
-          <button id="saveBtn" class="primary" title="Save: keeps the scene editable and bakes it onto the display (icons go to the icon library)">Save</button>
+          <button id="homeBtn" title="Back to all projects (saves first)">◂ Projects</button>
+          <span id="docType" class="badge">Animation</span>
+          <button id="docBtn" class="docname" title="Click to rename this project"><span id="docName">Untitled</span><span id="docDirty" class="dirty hidden" title="Unsaved changes (saved automatically every few seconds)">●</span></button>
+          <span id="docStatus" class="chip"></span>
+          <button id="saveBtn" title="Save the project. It stays editable; nothing changes on the display (also saved automatically)">Save</button>
+          <button id="sendBtn" class="primary" title="Bake it and put it on the display under the project's name">Send to display</button>
           <button id="docMoreBtn" title="More">⋮</button>
-          <div id="docMenu" class="docmenu hidden">
-            <input id="docFilter" placeholder="Filter…" autocomplete="off">
-            <div id="docList" class="doclist"></div>
-          </div>
           <div id="docMore" class="docmenu small hidden">
-            <button id="saveAsBtn">Save as…</button>
+            <button id="iconSizeBtn" class="hidden">Change icon size…</button>
+            <button id="dupBtn">Duplicate project</button>
+            <button id="exportBtn">Export project file</button>
             <button id="pngBtn">Export PNG</button>
-            <button id="delSceneBtn" class="danger">Delete this saved scene</button>
+            <button id="delProjBtn" class="danger">Delete project</button>
           </div>
-          <input id="saveName" type="hidden">
         </span>
         <span class="grow"></span>
         <label class="toggle" title="Stream the canvas to the display at ~30 fps"><input id="liveChk" type="checkbox"> <b>Live on display</b></label>

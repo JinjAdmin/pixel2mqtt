@@ -111,6 +111,7 @@ class SceneStore:
     def __init__(self, data_dir: pathlib.Path):
         self.dir = data_dir / "scenes"
         self.dir.mkdir(parents=True, exist_ok=True)
+        self._cache = {}
 
     @staticmethod
     def _name(name: str) -> str:
@@ -120,10 +121,19 @@ class SceneStore:
         return n
 
     def list(self):
+        """Projects with their size, type info and editor meta (type, rev, sent). Parsed files are cached by mtime."""
         out = []
         for p in sorted(self.dir.glob("*.json"), key=lambda p: p.stem.lower()):
             st = p.stat()
-            out.append({"name": p.stem, "size": st.st_size, "mtime": int(st.st_mtime)})
+            info = self._cache.get(p.name)
+            if not info or info[0] != st.st_mtime_ns:
+                try:
+                    s = json.loads(p.read_bytes())
+                    info = (st.st_mtime_ns, {"w": s.get("w"), "h": s.get("h"), "bg": s.get("bg"), "meta": s.get("meta")})
+                except ValueError:
+                    info = (st.st_mtime_ns, {})
+                self._cache[p.name] = info
+            out.append({"name": p.stem, "size": st.st_size, "mtime": int(st.st_mtime), **info[1]})
         return out
 
     def get(self, name: str) -> bytes:

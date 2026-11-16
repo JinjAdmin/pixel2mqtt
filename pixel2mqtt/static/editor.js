@@ -30,16 +30,24 @@ const Editor = (() => {
   const F = () => { const l = L(); return l.frames[Math.min(sel[mode].f, l.frames.length - 1)]; };
   const touch = () => { dirty = true; liveDirty = true; };
 
-  /* ---------------------------------------------------------------- history */
-  const docState = { anim: { name: "", edited: false, saved: false }, icon: { name: "", edited: false, saved: false } };
-  function markEdited(on = true) { docState[mode].edited = on; syncDoc(); }
-  function setDocName(name, saved) { docState[mode].name = name; docState[mode].saved = saved; $("#saveName").value = name; syncDoc(); }
-  function syncDoc() {
-    const d = docState[mode];
-    $("#docName").textContent = d.name || (mode === "icon" ? "Untitled icon" : "Untitled");
-    $("#docDirty").classList.toggle("hidden", !d.edited);
-    $("#delSceneBtn").disabled = !d.saved;
+  /* ---------------------------------------------------------------- project state */
+  // A project = one editable scene stored by pixel2mqtt ("Save", also automatic), separate from what's on the
+  // display ("Send to display"). Its meta is kept in the scene file: { type: "anim"|"icon", rev, sent: {as, rev} }.
+  const proj = { open: false, name: "", type: "anim", edited: false, rev: 0, sent: null };
+  function statusOf(name, meta, edited) {
+    const sent = meta.sent;
+    if (!sent || sent.as !== name) return ["Draft", "draft", "Not on the display yet"];
+    if (sent.rev === meta.rev && !edited) return ["On display", "ok", "The display has this version"];
+    return ["Changed since sent", "warn", "The display has an older version: Send to update it"];
   }
+  function syncDoc() {
+    $("#docName").textContent = proj.name || "Untitled";
+    $("#docDirty").classList.toggle("hidden", !proj.edited);
+    $("#docType").textContent = proj.type === "icon" ? `Icon ${sc.w}×${sc.h}` : "Animation";
+    const [s, c, tip] = statusOf(proj.name, proj, proj.edited);
+    $("#docStatus").textContent = s; $("#docStatus").className = "chip " + c; $("#docStatus").title = tip;
+  }
+  function markEdited(on = true) { if (proj.edited !== on) { proj.edited = on; syncDoc(); } }
   function pushUndo() { markEdited(); const h = hist[mode]; h.undo.push({ sc: Scene.clone(sc), s: { ...sel[mode] } }); if (h.undo.length > 40) h.undo.shift(); h.redo = []; }
   function restore(st) { docs[mode] = sc = st.sc; sel[mode] = st.s; fullRefresh(); }
   function undo() { const h = hist[mode]; if (h.undo.length) { h.redo.push({ sc: Scene.clone(sc), s: { ...sel[mode] } }); restore(h.undo.pop()); } }
@@ -389,93 +397,185 @@ const Editor = (() => {
     liveSent = liveCount; liveT = now;
   }, 1000);
 
-  /* ---------------------------------------------------------------- modes, open, save */
+  /* ---------------------------------------------------------------- modes */
   function fullRefresh() { layout(); renderLayers(); renderProps(); replan(); stripDirty = true; touch(); renderSceneProps(); }
   function renderSceneProps() {
     $("#bgNone").checked = !sc.bg; $("#bgColor").value = sc.bg ? hex(sc.bg) : "#000000"; $("#bgNoneWrap").classList.toggle("hidden", mode !== "icon");
-    $("#iconW").value = sc.w; $("#iconH").value = sc.h;
   }
-  function setMode(m) {
+  function setMode(m) {   // m = project type: "anim" (52x32, motion, live preview) or "icon" (any size, frames only)
     mode = m; sc = docs[m];
-    document.querySelector(`input[name=emode][value=${m}]`).checked = true;
-    $("#iconSize").classList.toggle("hidden", m !== "icon");
-    $("#grabBtn").disabled = m !== "anim";
-    $("#saveName").value = docState[m].name; syncDoc();
+    const icon = m === "icon";
+    $("#iconSizeBtn").classList.toggle("hidden", !icon);
+    $("#grabBtn").disabled = icon;
+    for (const e of [$("#pTile").closest("label"), $("#dirPad"), $("#pSpeed").closest("label"), $("#pBlink").closest("label"), $("#liveChk").closest("label")])
+      e.classList.toggle("hidden", icon);
+    if (icon) $("#liveChk").checked = false;
     fullRefresh();
   }
   function setScene(s, m) {
     docs[m] = s; hist[m] = { undo: [], redo: [] }; sel[m] = { l: s.layers.length - 1, f: 0 }; t = 0;
     if (mode !== m) setMode(m); else { sc = s; fullRefresh(); }
   }
-  let savedScenes = [];
+
+  /* ---------------------------------------------------------------- projects: start screen, open, save, send */
+  let projects = [];   // [{name, mtime, meta}]
+  const lower = a => new Set(a.map(s => s.toLowerCase()));
+  function uniqueName(base, taken) { let n = base, i = 2; while (taken.has(n.toLowerCase())) n = `${base} ${i++}`; return n; }
+  const takenEverywhere = () => lower([...projects.map(p => p.name), ...lib.anims.map(f => stem(f.name)), ...lib.icons.map(f => stem(f.name))]);
+  function remember(name) { try { localStorage.setItem("p2m.lastProject", name); } catch (e) { /* private mode */ } }
+  function lastProject() { try { return localStorage.getItem("p2m.lastProject"); } catch (e) { return null; } }
+
   async function refreshOpenList() {
-    try { savedScenes = await api("/scenes"); } catch (e) { savedScenes = []; }
-    if (!$("#docMenu").classList.contains("hidden")) renderDocList();
-    const d = docState[mode];
-    d.saved = savedScenes.some(s => s.name === d.name + (mode === "icon" ? " (icon)" : "")); syncDoc();
+    try { projects = await api("/scenes"); } catch (e) { projects = []; }
+    renderHome();
   }
-  function renderDocList() {
-    const q = $("#docFilter").value.trim().toLowerCase(), hit = n => !q || n.toLowerCase().includes(q);
-    const item = (label, sub, fn) => el("button", { cls: "docitem", onclick: () => { closeMenus(); fn(); } }, label, sub ? el("span", { cls: "muted small" }, sub) : "");
-    const saved = savedScenes.filter(s => hit(s.name)), anims = lib.anims.map(f => stem(f.name)).filter(hit);
-    $("#docList").replaceChildren(
-      el("div", { cls: "dochead" }, "Saved scenes (editable)"),
-      ...(saved.length ? saved.map(s => item(s.name, "", () => openScene(s.name))) : [el("div", { cls: "muted small docnone" }, q ? "no match" : "none yet: Save creates one")]),
-      el("div", { cls: "dochead" }, "Animations on the display"),
-      ...(anims.length ? anims.map(n => item(n, "", () => openAnim(n))) : [el("div", { cls: "muted small docnone" }, cur ? "no match" : "adopt a display first")]));
+  function ago(sec) {
+    const d = Date.now() / 1000 - sec;
+    return d < 90 ? "just now" : d < 3600 ? Math.round(d / 60) + " min ago" : d < 86400 ? Math.round(d / 3600) + " h ago" : Math.round(d / 86400) + " days ago";
   }
-  function okToDiscard() {
-    const d = docState[mode];
-    return !d.edited || confirm(`Discard the unsaved changes to "${d.name || "Untitled"}"?`);
+  function projectMeta(p) {   // older saved scenes (before projects) were always sent to the display too
+    if (p.meta && p.meta.type) return p.meta;
+    const onDisplay = lib.anims.some(f => stem(f.name) === p.name);
+    return { type: p.w === PW && p.h === PH && p.bg ? "anim" : "icon", rev: 0, sent: onDisplay ? { as: p.name, rev: 0 } : null };
   }
-  async function openScene(name) {
-    if (!okToDiscard()) return;
+  function renderHome() {
+    const sel = $("#fromDisplaySel");
+    sel.replaceChildren(...(lib.anims.length ? lib.anims.map(f => el("option", { value: stem(f.name) }, stem(f.name)))
+      : [el("option", { value: "" }, cur ? "(no animations on the display)" : "(adopt a display first)")]));
+    const list = [...projects].sort((a, b) => b.mtime - a.mtime);
+    $("#projList").replaceChildren(...(list.length ? list.map(p => {
+      const m = projectMeta(p), [st, cls] = statusOf(p.name, m, false);
+      return el("div", { cls: "projrow" },
+        el("span", { cls: "badge" }, m.type === "icon" ? `Icon ${p.w}×${p.h}` : "Animation"),
+        el("button", { cls: "projname", title: "Open", onclick: () => openProject(p.name) }, p.name),
+        el("span", { cls: "chip " + cls }, st), el("span", { cls: "muted small" }, ago(p.mtime)),
+        el("button", { title: "Open", onclick: () => openProject(p.name) }, "Open"),
+        el("button", { title: "Delete this project (what's on the display stays)", onclick: () => deleteProject(p.name) }, "🗑"));
+    }) : [el("p", { cls: "muted" }, "No projects yet. Start a new one above.")]));
+    const last = lastProject();
+    $("#continueRow").replaceChildren(...(last && projects.some(p => p.name === last) && !proj.open
+      ? [el("button", { cls: "primary", onclick: () => openProject(last) }, `Continue “${last}”`)] : []));
+  }
+  function showHome(on) {
+    $("#projHome").classList.toggle("hidden", !on); $("#editorMain").classList.toggle("hidden", on);
+    if (on) { setPlaying(false); $("#liveChk").checked = false; renderHome(); } else layout();
+  }
+  async function leaveProject() {   // everything is saved, so leaving never loses work
+    if (proj.open && proj.edited) { try { await saveProject(true); } catch (e) { return confirm(`Couldn't save "${proj.name}" (${e.message}). Leave anyway?`); } }
+    return true;
+  }
+  function load(s, type, name, rev, sent) {
+    setPlaying(false);
+    Object.assign(proj, { open: true, name, type, rev, sent, edited: false });
+    setScene(s, type); syncDoc(); remember(name); showHome(false);
+  }
+  async function openProject(name) {
+    if (!await leaveProject()) return;
     try {
-      const s = Scene.fromJSON(await api(`/scenes/${enc(name)}`)), m = s.w === PW && s.h === PH && s.bg ? "anim" : "icon";
-      setScene(s, m); setDocName(name.replace(/ \(icon\)$/, ""), true); markEdited(false);
-      toast("Opened " + name);
+      const s = Scene.fromJSON(await api(`/scenes/${enc(name)}`)), m = projectMeta({ ...s, name, meta: s.meta });
+      load(s, m.type, name, m.rev || 0, m.sent || null);
     } catch (e) { toast(e.message, true); }
   }
-  async function openAnim(name) {
+  async function newProject(type) {
+    if (!await leaveProject()) return;
+    let w = PW, h = PH;
+    if (type === "icon") {
+      let v = $("#newIconSize").value;
+      if (v === "custom") { v = prompt("Icon size, width × height (up to 52×32)", "16x16"); if (!v) return; }
+      const m = v.match(/(\d+)\s*[x×*]\s*(\d+)/i); if (!m) return toast("Size like 16x16", true);
+      w = Math.max(1, Math.min(PW, +m[1])); h = Math.max(1, Math.min(PH, +m[2]));
+    }
+    await refreshOpenList();
+    const s = type === "icon" ? Scene.newScene(w, h, null) : Scene.newScene(PW, PH, [0, 0, 0]);
+    load(s, type, uniqueName(type === "icon" ? "Untitled icon" : "Untitled animation", lower(projects.map(p => p.name))), 0, null);
+    markEdited(); await saveProject(true);
+  }
+  async function openAnim(name) {   // an animation on the display -> a new project "<name> (copy)"
     if (!cur) return toast("Adopt a display first", true);
-    if (mode === "anim" && !okToDiscard()) return;
+    if (!name || !await leaveProject()) return;
     try {
       toast("Opening " + name + "…");
-      const s = Scene.fromJSON(await api(`/displays/${cur}/scene?anim=${enc(name)}`));
-      setScene(s, "anim"); setDocName(name, savedScenes.some(x => x.name === name)); markEdited(false);
-      toast(`Opened "${name}": ${s.layers.length} layer${s.layers.length > 1 ? "s" : ""}`);
+      await refreshOpenList();
+      const s = Scene.fromJSON(await api(`/displays/${cur}/scene?anim=${enc(name)}`)), copy = uniqueName(`${name} (copy)`, takenEverywhere());
+      load(s, "anim", copy, 0, null); markEdited(); await saveProject(true);
+      toast(`Opened a copy of "${name}" as "${copy}". The original on the display isn't touched.`);
     } catch (e) { toast(e.message, true); }
   }
-  async function save(asNew) {
-    if (!cur) return toast("Adopt a display first", true);
-    let name = $("#saveName").value.trim();
-    if (!name || asNew) {
-      const n = prompt(mode === "icon" ? "Name for this icon" : "Name for this animation", name);
-      if (n === null || !n.trim()) return;
-      name = n.trim();
-    }
+  async function saveProject(quiet) {
+    if (!proj.open) return;
+    if (proj.edited) proj.rev++;
+    sc.meta = { type: proj.type, rev: proj.rev, sent: proj.sent };
+    const was = proj.edited; proj.edited = false; syncDoc();
     try {
+      await api(`/scenes/${enc(proj.name)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: Scene.toJSON(sc) });
+    } catch (e) { if (was) markEdited(); throw e; }
+    remember(proj.name);
+    if (!quiet) toast(`Saved project "${proj.name}"`);
+    refreshOpenList();
+  }
+  async function sendToDisplay() {
+    if (!cur) return toast("Adopt a display first", true);
+    const kind = proj.type === "icon" ? "icons" : "anims", ext = kind === "icons" ? ".pxi" : ".anim";
+    const ours = proj.sent && proj.sent.as === proj.name;
+    if (lib[kind].some(f => f.name === proj.name + ext) && !ours &&
+        !confirm(`"${proj.name}" is already on the display, and it wasn't made from this project.\n\nReplace it with this project?`)) return;
+    try {
+      await saveProject(true);
       const { frames } = Scene.bake(sc, 450);
-      let r;
-      if (mode === "anim") {
-        r = await postRaw(`/displays/${cur}/upload?kind=anims&name=${enc(name)}`, Scene.buildPXA(frames, sc.w, sc.h));
-        await api(`/scenes/${enc(name)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: Scene.toJSON(sc) });
-        toast(`Saved "${stem(r.name)}" (${frames.length} frame${frames.length > 1 ? "s" : ""}) to the display and as an editable scene`);
-        setDocName(stem(r.name), true); markEdited(false);
-        await loadLibrary(); $("#animSel").value = stem(r.name);
-      } else {
-        r = await postRaw(`/displays/${cur}/upload?kind=icons&name=${enc(name)}`, Scene.buildPXI(frames.slice(0, 64), sc.w, sc.h));
-        await api(`/scenes/${enc(name + " (icon)")}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: Scene.toJSON(sc) });
-        toast(`Saved icon "${stem(r.name)}"` + (frames.length > 1 ? ` (${Math.min(64, frames.length)} frames)` : ""));
-        setDocName(stem(r.name), true); markEdited(false);
-        iconCache.clear(); await loadLibrary();
-      }
-      refreshStorage(); refreshOpenList();
+      const body = proj.type === "icon" ? Scene.buildPXI(frames.slice(0, 64), sc.w, sc.h) : Scene.buildPXA(frames, sc.w, sc.h);
+      const r = await postRaw(`/displays/${cur}/upload?kind=${kind}&name=${enc(proj.name)}`, body);
+      proj.sent = { as: stem(r.name), rev: proj.rev };
+      await saveProject(true);
+      toast(`"${stem(r.name)}" is on the display` + (proj.type === "icon" ? " (icon library)" : ` (${frames.length} frame${frames.length > 1 ? "s" : ""})`));
+      if (proj.type === "icon") iconCache.clear();
+      await loadLibrary(); refreshStorage();
     } catch (e) { toast(e.message, true); }
   }
+  async function renameProject() {
+    const n = prompt("Project name", proj.name); if (n === null) return;
+    const name = n.trim().replace(/[\\/"\x00-\x1f]+/g, " ").trim(); if (!name || name === proj.name) return;
+    await refreshOpenList();
+    if (projects.some(p => p.name.toLowerCase() === name.toLowerCase()) && !confirm(`A project called "${name}" already exists. Replace it?`)) return;
+    const old = proj.name; proj.name = name; markEdited();
+    try { await saveProject(true); await api(`/scenes/${enc(old)}`, { method: "DELETE" }); toast(`Renamed to "${name}"`); refreshOpenList(); }
+    catch (e) { proj.name = old; syncDoc(); toast(e.message, true); }
+  }
+  async function deleteProject(name) {
+    if (!confirm(`Delete the project "${name}"? This can't be undone. Anything already sent to the display stays there.`)) return;
+    try {
+      await api(`/scenes/${enc(name)}`, { method: "DELETE" });
+      if (proj.open && proj.name === name) { proj.open = false; proj.edited = false; showHome(true); }
+      toast(`Deleted project "${name}"`); refreshOpenList();
+    } catch (e) { toast(e.message, true); }
+  }
+  async function duplicateProject() {
+    await saveProject(true);
+    const name = uniqueName(`${proj.name} (copy)`, takenEverywhere());
+    Object.assign(proj, { name, sent: null, rev: 0 }); markEdited(); await saveProject(true); remember(name);
+    toast(`Now editing the copy "${name}"`);
+  }
+  function exportProject() {
+    sc.meta = { type: proj.type, rev: proj.rev, sent: null };
+    const b = new Blob([Scene.toJSON(sc)], { type: "application/json" });
+    el("a", { href: URL.createObjectURL(b), download: proj.name + ".pixel2mqtt.json" }).click();
+  }
+  async function importProject(file) {
+    if (!await leaveProject()) return;
+    try {
+      const s = Scene.fromJSON(await file.text()), m = projectMeta({ ...s, name: "", meta: s.meta });
+      await refreshOpenList();
+      const name = uniqueName(file.name.replace(/(\.pixel2mqtt)?\.json$/i, "") || "Imported", lower(projects.map(p => p.name)));
+      load(s, m.type, name, 0, null); markEdited(); await saveProject(true);
+      toast(`Imported "${name}"`);
+    } catch (e) { toast("Not a pixel2mqtt project file: " + e.message, true); }
+  }
+  setInterval(() => { if (proj.open && proj.edited && !drag) saveProject(true).catch(() => {}); }, 5000);   // autosave
+  document.addEventListener("visibilitychange", () => { if (document.hidden && proj.open && proj.edited) saveProject(true).catch(() => {}); });
+
   async function addIconLayer(name) {
     if (!name) return;
-    if (mode !== "anim") setMode("anim");
+    if (!proj.open || proj.type !== "anim") await newProject("anim");
+    if (!proj.open) return;
     try {
       const ic = await getIcon(name);
       const l = Scene.newLayer(ic.w, ic.h, name);
@@ -484,12 +584,16 @@ const Editor = (() => {
       addLayer(l); setTool("move");
     } catch (e) { toast(e.message, true); }
   }
-  async function editIcon(name) {
+  async function editIcon(name) {   // an icon from the library -> a new icon project "<name> (copy)"
+    if (!await leaveProject()) return;
     try {
       const ic = await getIcon(name), s = Scene.newScene(ic.w, ic.h, null);
       s.layers[0].name = name;
       s.layers[0].frames = ic.frames.map(f => ({ w: ic.w, h: ic.h, delay: f.delay, rgba: new Uint8ClampedArray(f.rgba) }));
-      setScene(s, "icon"); setDocName(name, false); markEdited(false); showTab("editor");
+      await refreshOpenList();
+      const copy = uniqueName(`${name} (copy)`, takenEverywhere());
+      load(s, "icon", copy, 0, null); markEdited(); await saveProject(true); showTab("editor");
+      toast(`Editing a copy of the icon "${name}" as "${copy}"`);
     } catch (e) { toast(e.message, true); }
   }
   async function imageLayer(file) {
@@ -559,32 +663,26 @@ const Editor = (() => {
   $("#onionChk").addEventListener("change", () => { dirty = true; });
   $("#bgColor").addEventListener("input", e => { if (!sc.bg && mode === "icon") return; sc.bg = unhex(e.target.value); touch(); });
   $("#bgNone").addEventListener("change", e => { pushUndo(); sc.bg = e.target.checked ? null : unhex($("#bgColor").value); touch(); });
-  $("#iconResize").addEventListener("click", () => {
-    const w = Math.max(1, Math.min(PW, +$("#iconW").value | 0)), h = Math.max(1, Math.min(PH, +$("#iconH").value | 0));
-    pushUndo(); sc.w = w; sc.h = h; fullRefresh();
-  });
-  $("#newBtn").addEventListener("click", () => {
-    if (!okToDiscard()) return;
-    pushUndo(); const s = mode === "anim" ? Scene.newScene(PW, PH, [0, 0, 0]) : Scene.newScene(sc.w, sc.h, null);
-    docs[mode] = sc = s; sel[mode] = { l: 0, f: 0 }; t = 0; setDocName("", false); markEdited(false); fullRefresh();
-  });
-  function closeMenus() { $("#docMenu").classList.add("hidden"); $("#docMore").classList.add("hidden"); }
-  $("#docBtn").addEventListener("click", e => {
-    e.stopPropagation(); const open = $("#docMenu").classList.contains("hidden"); closeMenus();
-    if (open) { $("#docFilter").value = ""; renderDocList(); $("#docMenu").classList.remove("hidden"); $("#docFilter").focus(); refreshOpenList(); }
-  });
-  $("#docMoreBtn").addEventListener("click", e => { e.stopPropagation(); const open = $("#docMore").classList.contains("hidden"); closeMenus(); if (open) $("#docMore").classList.remove("hidden"); });
-  $("#docFilter").addEventListener("input", renderDocList);
-  $("#docMenu").addEventListener("click", e => e.stopPropagation());
-  document.addEventListener("click", closeMenus);
-  $("#saveAsBtn").addEventListener("click", () => { closeMenus(); save(true); });
-  $("#delSceneBtn").addEventListener("click", async () => {
+  $("#iconSizeBtn").addEventListener("click", () => {
     closeMenus();
-    const name = docState[mode].name + (mode === "icon" ? " (icon)" : ""); if (!docState[mode].saved) return;
-    if (!confirm(`Delete the saved scene "${name}"? The animation on the display stays.`)) return;
-    try { await api(`/scenes/${enc(name)}`, { method: "DELETE" }); toast("Deleted scene " + name); refreshOpenList(); } catch (e) { toast(e.message, true); }
+    const v = prompt("Icon size, width × height (up to 52×32). Layers keep their pixels.", `${sc.w}x${sc.h}`); if (!v) return;
+    const m = v.match(/(\d+)\s*[x×*]\s*(\d+)/i); if (!m) return toast("Size like 16x16", true);
+    pushUndo(); sc.w = Math.max(1, Math.min(PW, +m[1])); sc.h = Math.max(1, Math.min(PH, +m[2])); fullRefresh(); syncDoc();
   });
-  $("#saveBtn").addEventListener("click", () => save(false));
+  function closeMenus() { $("#docMore").classList.add("hidden"); }
+  $("#docMoreBtn").addEventListener("click", e => { e.stopPropagation(); const open = $("#docMore").classList.contains("hidden"); closeMenus(); if (open) $("#docMore").classList.remove("hidden"); });
+  document.addEventListener("click", closeMenus);
+  $("#homeBtn").addEventListener("click", async () => { if (await leaveProject()) { proj.open = false; showHome(true); refreshOpenList(); } });
+  $("#docBtn").addEventListener("click", renameProject);
+  $("#saveBtn").addEventListener("click", () => saveProject(false).catch(e => toast(e.message, true)));
+  $("#sendBtn").addEventListener("click", sendToDisplay);
+  $("#dupBtn").addEventListener("click", () => { closeMenus(); duplicateProject().catch(e => toast(e.message, true)); });
+  $("#exportBtn").addEventListener("click", () => { closeMenus(); exportProject(); });
+  $("#delProjBtn").addEventListener("click", () => { closeMenus(); deleteProject(proj.name); });
+  $("#newAnimBtn").addEventListener("click", () => newProject("anim"));
+  $("#newIconBtn").addEventListener("click", () => newProject("icon"));
+  $("#fromDisplayBtn").addEventListener("click", () => openAnim($("#fromDisplaySel").value));
+  $("#importProj").addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f) importProject(f); });
   $("#grabBtn").addEventListener("click", async () => {
     if (!cur) return;
     try {
@@ -595,10 +693,9 @@ const Editor = (() => {
   });
   $("#pngBtn").addEventListener("click", () => {
     const c = el("canvas", { width: sc.w, height: sc.h }); c.getContext("2d").putImageData(new ImageData(composite(), sc.w, sc.h), 0, 0);
-    c.toBlob(b => el("a", { href: URL.createObjectURL(b), download: ($("#saveName").value || "pixel") + ".png" }).click());
+    c.toBlob(b => el("a", { href: URL.createObjectURL(b), download: (proj.name || "pixel") + ".png" }).click());
   });
   document.querySelectorAll("#tools [data-tool]").forEach(b => b.addEventListener("click", () => setTool(b.dataset.tool)));
-  document.querySelectorAll("input[name=emode]").forEach(r => r.addEventListener("change", () => setMode(r.value)));
   document.querySelectorAll("#brushSizes [data-size]").forEach(b => b.addEventListener("click", () => setBrush(+b.dataset.size)));
   document.querySelectorAll("#brushShapes [data-shape]").forEach(b => b.addEventListener("click", () => setShape(b.dataset.shape === "round")));
   document.querySelectorAll("#shapeKinds [data-kind]").forEach(b => b.addEventListener("click", () => { settings.shape.kind = b.dataset.kind; syncShape(); }));
@@ -647,6 +744,6 @@ const Editor = (() => {
     }
   });
 
-  syncTints(); syncShape(); setTool("pencil"); setMode("anim"); requestAnimationFrame(frame); refreshOpenList();
+  syncTints(); syncShape(); setTool("pencil"); setMode("anim"); showHome(true); requestAnimationFrame(frame); refreshOpenList();
   return { addIconLayer, editIcon, openAnim, refreshOpenList };
 })();
