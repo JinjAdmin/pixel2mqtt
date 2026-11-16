@@ -135,3 +135,4 @@ dialog .chk { font-size: 13px; }
 @media (max-width: 900px) { .tools .brushes { flex-direction: row; } }
 .tools .brushes.shapes { flex-direction: row; }
 .tools .brushes.shapes button { width: 21px; font-size: 12px; }
+.side .sub { font-size: 11px; color: var(--muted); margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .04em; }

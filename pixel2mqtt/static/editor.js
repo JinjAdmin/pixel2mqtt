@@ -373,6 +373,24 @@ const Editor = (() => {
   $("#pOpacity").addEventListener("pointerdown", pushUndo);
   $("#pResize").addEventListener("click", () => { pushUndo(); resizeFrames(L(), Math.max(1, Math.min(256, +$("#pW").value | 0)), Math.max(1, Math.min(256, +$("#pH").value | 0))); renderProps(); stripDirty = true; replan(); touch(); });
   $("#lyNew").addEventListener("click", () => addLayer(Scene.newLayer(sc.w, sc.h, "Layer " + (sc.layers.length + 1))));
+  $("#lyClear").addEventListener("click", e => {
+    pushUndo();
+    for (const f of e.shiftKey ? L().frames : [F()]) f.rgba.fill(0);
+    stripDirty = true; touch(); toast(e.shiftKey ? "Cleared all frames of " + L().name : "Cleared this frame");
+  });
+  $("#pScale").addEventListener("click", () => {
+    const w = Math.max(1, Math.min(256, +$("#pW").value | 0)), h = Math.max(1, Math.min(256, +$("#pH").value | 0));
+    pushUndo();
+    for (const f of L().frames) {   // nearest-neighbour, so pixel art stays crisp
+      const px = new Uint8ClampedArray(w * h * 4);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const s = (Math.floor(y * f.h / h) * f.w + Math.floor(x * f.w / w)) * 4;
+        px.set(f.rgba.subarray(s, s + 4), (y * w + x) * 4);
+      }
+      f.w = w; f.h = h; f.rgba = px;
+    }
+    delete L().span; renderProps(); stripDirty = true; replan(); touch();
+  });
   $("#lyImg").addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f) imageLayer(f); });
   $("#lyDup").addEventListener("click", () => { const c = Scene.clone({ w: 1, h: 1, bg: null, layers: [L()] }).layers[0]; c.name += " copy"; addLayer(c); });
   $("#lyDel").addEventListener("click", () => {

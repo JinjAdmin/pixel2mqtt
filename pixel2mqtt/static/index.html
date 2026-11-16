@@ -88,11 +88,16 @@
         <h3>Layers <span class="muted small">(top first)</span></h3>
         <div id="layerList" class="layerlist"></div>
         <div class="btns">
-          <button id="lyNew" title="New blank layer">+ New</button>
+          <button id="lyDup" title="Duplicate the selected layer">⧉ Duplicate</button>
+          <button id="lyUp" title="Move the selected layer up">▲</button><button id="lyDown" title="Move the selected layer down">▼</button>
+          <button id="lyClear" title="Clear: erase this frame of the selected layer (Shift+click: all its frames). The layer stays.">Clear</button>
+          <button id="lyDel" title="Delete the selected layer">✕ Delete</button>
+        </div>
+        <div class="sub">Add a layer</div>
+        <div class="btns">
+          <button id="lyNew" title="New blank, transparent layer">+ Blank</button>
           <label class="btnlike" title="Add an image or GIF as a layer (GIF frames become layer frames)">+ Image<input id="lyImg" type="file" accept="image/*" hidden></label>
-          <button id="lyDup" title="Duplicate layer">⧉</button>
-          <button id="lyUp" title="Move up">▲</button><button id="lyDown" title="Move down">▼</button>
-          <button id="lyDel" title="Delete layer">✕</button>
+          <button id="grabBtn" title="Add what the display shows right now as a layer">+ From display</button>
         </div>
         <div class="row"><select id="iconSel"></select><button id="addIcon" title="Add this icon as a layer">+ Icon</button></div>
       </div>
@@ -100,7 +105,8 @@
         <h3>Layer</h3>
         <label class="prop">Name <input id="pName"></label>
         <div class="prop2"><label>X <input id="pX" type="number"></label><label>Y <input id="pY" type="number"></label></div>
-        <div class="prop2"><label>W <input id="pW" type="number" min="1" max="256"></label><label>H <input id="pH" type="number" min="1" max="256"></label><button id="pResize">Resize</button></div>
+        <div class="prop2"><label>W <input id="pW" type="number" min="1" max="256"></label><label>H <input id="pH" type="number" min="1" max="256"></label></div>
+        <div class="btns"><button id="pResize" title="Change the layer's canvas size; the picture keeps its size (cropped or padded at the right/bottom)">Crop / extend</button><button id="pScale" title="Stretch or shrink the picture to the new size">Scale</button></div>
         <label class="chk"><input id="pTile" type="checkbox"> Tile (wrap around while moving)</label>
         <div class="motion">
           <div class="dirpad" id="dirPad"></div>
@@ -117,10 +123,11 @@
         <div class="row"><select id="openSel"></select><button id="openBtn" title="Open as layers">Open</button><button id="newBtn" title="Start a new empty scene">New</button></div>
         <div class="row"><input id="saveName" placeholder="name"><button id="saveBtn" class="primary">Save</button></div>
         <p class="hint" id="saveHint"></p>
-        <div class="btns"><button id="grabBtn" title="Add the display's current frame as a layer">Layer from display</button><button id="pngBtn">Export PNG</button><button id="delSceneBtn" title="Delete the saved scene with this name (not the animation on the display)">Delete saved scene</button></div>
+        <div class="btns"><button id="pngBtn">Export PNG</button><button id="delSceneBtn" title="Delete the saved scene with this name (not the animation on the display)">Delete saved scene</button></div>
       </div>
       <div class="card">
-        <h3>On the display</h3>
+        <h3>Test on the display</h3>
+        <p class="hint">Plays straight on the panel. Doesn't change the scene you're editing.</p>
         <div class="row"><select id="animSel"></select><button id="playAnim" title="Play this animation on the display">▶</button></div>
         <div class="row"><select id="soundSel"></select><button id="playSound" title="Play this sound on the display">♪</button></div>
       </div>
