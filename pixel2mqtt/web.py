@@ -220,6 +220,13 @@ def make_handler(mgr, config):
                         return self.send(200, json.dumps(scenes.scene_from_stock(api.res(f"{stock.RES}/{src}"))))
                     except APIError:
                         pass  # stock file missing on this display: fall back to the baked frames
+                if name.startswith("App "):  # a scene the Govee app left on the display: rebuild its layers
+                    data = stock.app_scenes(api).get(name)
+                    if data is not None:
+                        try:
+                            return self.send(200, json.dumps(scenes.scene_from_stock(data)))
+                        except Exception:  # noqa: BLE001 - not convertible as layers: use the baked frames
+                            pass
                 return self.send(200, json.dumps(scenes.scene_from_pxa(api.get_file("anims", name + ".anim"))))
             if p == ["import-stock"] and m == "POST":
                 b = self.jbody()

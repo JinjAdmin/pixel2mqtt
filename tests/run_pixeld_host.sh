@@ -20,6 +20,9 @@ mkdir -p $R/data/custom/sounds $R/mnt/UDISK/anims $R/mnt/UDISK/icons $R/usr/res 
 cp "$W/pixeld" $R/pixeld
 echo "02:00:00:aa:bb:cc" > $R/sys/class/net/wlan0/address
 printf 'normal' > $R/tmp/wifi_mode
+mkdir -p $R/mnt/UDISK/data/big_data            # fake Govee-app scene cache (synthetic bytes)
+printf 'P]GIF89a-synthetic-test-data' > $R/mnt/UDISK/data/big_data/cached1
+printf 'SQLite format 3' > $R/mnt/UDISK/data/multimedia.db
 cat > $W/inner.sh <<EOF
 set -e
 ip link set lo up

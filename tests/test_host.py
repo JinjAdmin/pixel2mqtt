@@ -204,6 +204,16 @@ def main():
     expect_status(lambda: api.res("/usr/res/../etc/passwd"), 400, "res traversal blocked")
     expect_status(lambda: api.res("/etc"), 400, "res outside /usr/res blocked")
 
+    # scenes the Govee app left in /mnt/UDISK/data (fixtures from run_pixeld_host.sh; synthetic bytes)
+    lst = api.res("/mnt/UDISK/data/big_data")
+    check(isinstance(lst, list) and [e["name"] for e in lst] == ["cached1"], "app scene folder listed")
+    check(api.res("/mnt/UDISK/data/big_data/cached1") == b"P]GIF89a-synthetic-test-data", "app scene readable")
+    expect_status(lambda: api.res("/mnt/UDISK/data/multimedia.db"), 400, "other app data blocked")
+    expect_status(lambda: api.res("/mnt/UDISK/data/big_data/../multimedia.db"), 400, "app folder traversal blocked")
+    expect_status(lambda: api.res("/mnt/UDISK/anims"), 400, "rest of UDISK blocked")
+    sc = stock.app_scenes(api)
+    check(list(sc.values()) == [b"GIF89a-synthetic-test-data"], "app_scenes strips the cache prefix")
+
     import urllib.request
     page = lambda: urllib.request.urlopen(f"http://{HOST}/").read().decode()  # noqa: E731
     check("paired, not connected" in page(), "editor-only polling does not take over MQTT")

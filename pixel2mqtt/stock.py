@@ -6,6 +6,7 @@ every fix found on real hardware (motion direction, A=0 = static, item-1-on-top 
 The importer reads the stock files from the device itself, converts them here, and uploads the results.
 Verified: converting the stock files of firmware 1.00.91 reproduces the hand-tuned set byte for byte.
 """
+import hashlib
 import logging
 
 from . import formats
@@ -14,6 +15,13 @@ from .convert import anim_convert as ac
 log = logging.getLogger("stock")
 
 RES = "/usr/res"
+
+# Scenes the Govee app sent to the display while it ran the stock firmware (they survive the pixeld install).
+# The app keeps no titles on the device, so imports are named "App <content hash>". big_data/ holds cached copies
+# with a 2-byte prefix ("P^" = layered scene, "P]" = GIF). Reading these needs a pixeld with the app-folder
+# /api/res rule (pixeld-h6631 newer than v0.1.2); older firmware answers 400 and they're skipped.
+APP = "/mnt/UDISK/data"
+APP_DIRS = ["gra_file", "dial_mode", "dial_effect", "gif", "looplay_A", "big_data"]
 
 # (stock file under /usr/res, animation name, clock sidecar "cx cy Label" or None)
 ANIMATIONS = [
@@ -111,6 +119,40 @@ def icon_bytes(stock: bytes) -> bytes:
     return formats.pxi(formats.decode(stock, black_transparent=True))
 
 
+def _app_normalise(data: bytes) -> bytes:
+    if data[:2] in (b"P^", b"P]") and len(data) > 16:
+        return data[2:]
+    return data
+
+
+def app_scenes(api):
+    """{name: normalised bytes} for every distinct scene the Govee app left on the display (empty if none or if
+    the firmware doesn't allow reading them)."""
+    out, seen = {}, set()
+    for d in APP_DIRS:
+        try:
+            listing = api.res(f"{APP}/{d}")
+        except Exception as e:  # noqa: BLE001 - folder missing, or older pixeld
+            log.debug("app folder %s: %s", d, e)
+            continue
+        if not isinstance(listing, list):
+            continue
+        for ent in sorted(listing, key=lambda e: e["name"]):
+            if ent.get("dir"):
+                continue
+            try:
+                data = _app_normalise(api.res(f"{APP}/{d}/{ent['name']}"))
+            except Exception as e:  # noqa: BLE001
+                log.warning("app scene %s/%s: %s", d, ent["name"], e)
+                continue
+            h = hashlib.sha1(data).hexdigest()
+            if h in seen:
+                continue
+            seen.add(h)
+            out["App " + h[:8]] = data
+    return out
+
+
 def plan(api):
     """List of (kind, device file name, fetch-and-convert callable) for everything importable from this device."""
     jobs = []
@@ -133,6 +175,8 @@ def plan(api):
             if n.startswith(prefix) and n.endswith(".png"):
                 icon = out + n[len(prefix):-4].lower()
                 jobs.append(("icons", icon + ".pxi", lambda p=f"{SM}/{d}/{n}": icon_bytes(api.res(p))))
+    for name, data in app_scenes(api).items():
+        jobs.append(("anims", name + ".anim", lambda b=data: anim_bytes(b)))
     return jobs
 
 
