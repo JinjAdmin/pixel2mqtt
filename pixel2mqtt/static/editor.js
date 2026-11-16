@@ -3,8 +3,19 @@
 // live preview, open/save. Uses scene.js (model/render/bake) and helpers from app.js (api, el, toast, lib, ...).
 const Editor = (() => {
   const cv = $("#cv"), g = cv.getContext("2d");
-  const PALETTE = ["#000000", "#ffffff", "#7f7f7f", "#ff0000", "#ff8800", "#ffdd00", "#88ff00", "#00c853", "#00e5ff", "#2979ff", "#651fff",
-    "#d500f9", "#ff4081", "#8d6e63", "#3e2723", "#1b5e20"];
+  // palette: the last 18 colours used (newest first), topped up with these defaults until there are 18
+  const DEFAULT_COLORS = ["#000000", "#ffffff", "#7f7f7f", "#ff0000", "#ff8800", "#ffdd00", "#88ff00", "#00c853", "#00e5ff", "#2979ff", "#651fff",
+    "#d500f9", "#ff4081", "#8d6e63", "#3e2723", "#1b5e20", "#b0bec5", "#0d47a1"];
+  const NPAL = 18;
+  let recent = [];
+  try { recent = (JSON.parse(localStorage.getItem("p2m.recentColors")) || []).filter(h => /^#[0-9a-f]{6}$/.test(h)).slice(0, NPAL); } catch (e) { recent = []; }
+  const paletteColors = () => [...recent, ...DEFAULT_COLORS.filter(h => !recent.includes(h))].slice(0, NPAL);
+  function useColor(c) {   // a colour was actually painted with: move it to the front of the palette
+    const h = hex(c); if (recent[0] === h) return;
+    recent = [h, ...recent.filter(x => x !== h)].slice(0, NPAL);
+    try { localStorage.setItem("p2m.recentColors", JSON.stringify(recent)); } catch (e) { /* private mode */ }
+    renderPalette();
+  }
   const DIRS = [[-1, -1, "↖"], [0, -1, "↑"], [1, -1, "↗"], [-1, 0, "←"], [0, 0, "•"], [1, 0, "→"], [-1, 1, "↙"], [0, 1, "↓"], [1, 1, "↘"]];
   const ERASE = [0, 0, 0, 0];
 
@@ -119,7 +130,31 @@ const Editor = (() => {
     requestAnimationFrame(frame);
   }
   function syncTime() { $("#timeSlider").value = Math.round(t); $("#timeLabel").textContent = (t / 1000).toFixed(2) + " s / " + (loopLen / 1000).toFixed(2) + " s"; }
-  function replan() { loopLen = Math.max(100, Scene.plan(sc).length); $("#timeSlider").max = Math.round(loopLen); if (t > loopLen) t = 0; syncTime(); }
+  function replan() { loopLen = Math.max(100, Scene.plan(sc).length); $("#timeSlider").max = Math.round(loopLen); if (t > loopLen) t = 0; syncTime(); loopHint(); }
+  // Does everything fit the loop a whole number of times? Frame sequences and blink cycles that don't would jump
+  // at the loop point (moving layers are always adjusted to wrap evenly).
+  function loopHint() {
+    const len = loopLen, lines = [], bad = [];
+    let longest = 0, any = false;
+    const fit = (name, what, u) => {
+      any = true; longest = Math.max(longest, u);
+      const n = len / u, whole = Math.abs(n - Math.round(n)) < 1e-6;
+      lines.push(`${whole ? "✓" : "✗"} ${name}: ${what} ${(u / 1000).toFixed(2)} s × ${whole ? Math.round(n) : n.toFixed(2)}`);
+      if (!whole) bad.push(name);
+    };
+    for (const l of sc.layers) {
+      if (l.visible === false) continue;
+      if (l.frames.length > 1 || l.timed) fit(l.name, `${l.frames.length} frames`, Scene.seqTotal(l));
+      if (l.blink > 0) fit(l.name, "blink cycle", 2 * Math.max(20, l.blink));
+      if (l.speed > 0 && (l.dir[0] || l.dir[1])) { any = true; lines.push(`✓ ${l.name}: moves, adjusted to wrap evenly`); }
+    }
+    const h = $("#loopHint");
+    if (!any) { h.textContent = ""; h.title = ""; h.className = "loophint small"; return; }
+    if (bad.length) { h.textContent = `⚠ ${bad.join(", ")} won't loop evenly`; h.className = "loophint small warn"; }
+    else if (longest && len > longest + 1) { h.textContent = `ⓘ loop stretched to ${(len / 1000).toFixed(2)} s to fit every layer`; h.className = "loophint small info"; }
+    else { h.textContent = "✓ loops seamlessly"; h.className = "loophint small ok"; }
+    h.title = `Loop ${(len / 1000).toFixed(2)} s\n` + lines.join("\n") + (bad.length ? "\n\nTip: make frame totals and blink cycles (2 × blink) divide evenly into each other." : "");
+  }
 
   /* ---------------------------------------------------------------- drawing */
   // screen cell -> pixel index in the selected layer's current frame (or -1)
@@ -146,7 +181,7 @@ const Editor = (() => {
   // [title, brush size, brush tip, colour, shape options]
   const POP = { pencil: ["Pencil", 1, 1, 1, 0], line: ["Line", 1, 1, 1, 0], shape: ["Shape", 1, 0, 1, 1],
                 eraser: ["Eraser", 1, 1, 0, 0], fill: ["Fill", 0, 0, 1, 0] };
-  let popTool = null, popTimer = null;
+  let popTool = null, popTimer = null, pickDragging = false;
   function showPop(tl, btn) {
     const cfg = POP[tl]; if (!cfg) return hidePop(true);
     clearTimeout(popTimer); popTool = tl;
@@ -163,12 +198,15 @@ const Editor = (() => {
   }
   function hidePop(now) {
     clearTimeout(popTimer);
-    const go = () => { $("#toolPop").classList.add("hidden"); popTool = null; };
+    const go = () => {
+      if (pickDragging) { popTimer = setTimeout(go, 250); return; }   // still dragging in the colour picker
+      $("#toolPop").classList.add("hidden"); $("#colorPick").classList.add("hidden"); popTool = null;
+    };
     if (now) go(); else popTimer = setTimeout(go, 250);
   }
   function syncPop() {
     const tl = popTool || tool, col = settings[tl] && settings[tl].color;
-    if (col) { $("#color").value = hex(col); $("#colorHex").textContent = hex(col); }
+    if (col) showColor(col);
     const br = brushOf(tl);
     document.querySelectorAll("#brushSizes [data-size]").forEach(b => b.classList.toggle("active", +b.dataset.size === br.size));
     document.querySelectorAll("#brushShapes [data-shape]").forEach(b => b.classList.toggle("active", (b.dataset.shape === "round") === br.round));
@@ -280,7 +318,8 @@ const Editor = (() => {
       setTool(colorTool); return;
     }
     pushUndo();
-    if (tl === "fill") { flood(x, y, colorOf("fill")); stripDirty = true; return; }
+    if (tl === "fill") { flood(x, y, colorOf("fill")); useColor(colorOf("fill")); stripDirty = true; return; }
+    if (tl === "pencil") useColor(colorOf("pencil"));
     drag = { tool: tl, x0: x, y0: y, last: [x, y], cur: [x, y], erase, square: e.shiftKey };
     if (tl === "pencil" || tl === "eraser") paint(x, y, tl === "eraser" ? ERASE : colorOf("pencil"), brushOf(tl));
   });
@@ -298,10 +337,12 @@ const Editor = (() => {
     if (drag && drag.tool === "line") {
       const c = drag.erase ? ERASE : colorOf("line"), br = brushOf("line", drag.erase);
       line(drag.x0, drag.y0, drag.cur[0], drag.cur[1], (a, b) => paint(a, b, c, br));
+      if (!drag.erase) useColor(c);
     }
     if (drag && drag.tool === "shape") {
       const c = drag.erase ? ERASE : colorOf("shape");
       shapeCells(drag, (a, b) => setPx(a, b, c));
+      if (!drag.erase) useColor(c);
     }
     if (drag && drag.tool === "move") renderProps();
     drag = null; touch(); stripDirty = true;
@@ -318,8 +359,75 @@ const Editor = (() => {
     tl = tl || popTool || (settings[tool] && settings[tool].color ? tool : colorTool);
     if (!settings[tl] || !settings[tl].color) return;
     settings[tl].color = c;
-    if ((popTool || tool) === tl) { $("#color").value = hex(c); $("#colorHex").textContent = hex(c); }
+    if ((popTool || tool) === tl) showColor(c);
     syncTints(); cv.style.cursor = cursorFor(tool); dirty = true;
+  }
+  // the flyout's colour row: swatch, hex field, inline picker and palette all show the colour being edited
+  function showColor(c) {
+    const h = hex(c);
+    $("#colorSwatch").style.background = h;
+    if (document.activeElement !== $("#colorHex")) $("#colorHex").value = h;
+    if (!$("#colorPick").classList.contains("hidden")) flyPicker.set(c);
+    document.querySelectorAll("#palette button").forEach(b => b.classList.toggle("on", b.dataset.hex === h));
+  }
+  function renderPalette() {
+    const tl = popTool || tool, cur = settings[tl] && settings[tl].color ? hex(settings[tl].color) : "";
+    $("#palette").replaceChildren(...paletteColors().map(h => el("button", { style: `background:${h}`, title: h, "data-hex": h, cls: h === cur ? "on" : "",
+      onclick: () => setColor([...unhex(h), 255]) })));
+  }
+
+  // Colour picker (no native dialog): saturation/brightness square + hue bar. onChange(rgb, done) fires while
+  // dragging (done = false) and once on release (done = true).
+  function rgb2hsv([r, g, b]) {
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let h = 0;
+    if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [(h * 60 + 360) % 360, mx ? d / mx : 0, mx];
+  }
+  function hsv2rgb(h, s, v) {
+    const f = n => { const k = (n + h / 60) % 6; return Math.round(255 * (v - v * s * Math.max(0, Math.min(k, 4 - k, 1)))); };
+    return [f(5), f(3), f(1)];
+  }
+  function makePicker(host, onChange) {
+    const sv = el("div", { cls: "cp-sv" }), svKnob = el("i", { cls: "cp-knob" }), hue = el("div", { cls: "cp-hue" }), hueKnob = el("i", { cls: "cp-knob" });
+    sv.append(svKnob); hue.append(hueKnob); host.replaceChildren(sv, hue);
+    let hsv = [0, 1, 1];
+    const paint = () => {
+      sv.style.background = `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${hsv[0]}, 100%, 50%))`;
+      svKnob.style.left = hsv[1] * 100 + "%"; svKnob.style.top = (1 - hsv[2]) * 100 + "%";
+      hueKnob.style.left = hsv[0] / 360 * 100 + "%";
+    };
+    const emit = done => onChange([...hsv2rgb(...hsv), 255], done);
+    const drag = (area, fn) => {
+      const at = e => { const r = area.getBoundingClientRect(); fn(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))); paint(); };
+      let down = false;
+      area.addEventListener("pointerdown", e => { pickDragging = down = true; try { area.setPointerCapture(e.pointerId); } catch (err) { /* no capture */ } at(e); emit(false); });
+      area.addEventListener("pointermove", e => { if (down) { at(e); emit(false); } });
+      area.addEventListener("pointerup", e => { if (!down) return; pickDragging = down = false; at(e); emit(true); });
+      area.addEventListener("lostpointercapture", () => { if (down) { pickDragging = down = false; emit(true); } });
+    };
+    drag(sv, (x, y) => { hsv[1] = x; hsv[2] = 1 - y; });
+    drag(hue, x => { hsv[0] = Math.min(359.9, x * 360); });
+    return { set(c) { const n = rgb2hsv(c); if (n[1] === 0 || n[2] === 0) n[0] = hsv[0]; hsv = n; paint(); } };
+  }
+  const flyPicker = makePicker($("#colorPick"), c => setColor(c));
+  // background colour: same picker in a small popover next to the swatch
+  const bgPop = el("div", { cls: "cpop hidden" }), bgHost = el("div", { cls: "cpick" }), bgHex = el("input", { cls: "hexin", maxlength: "7", spellcheck: "false" });
+  bgPop.append(bgHost, el("div", { cls: "row" }, bgHex, el("button", { onclick: () => bgPop.classList.add("hidden") }, "Done")));
+  document.body.append(bgPop);
+  let bgUndo = false;
+  const setBg = (c, done) => {
+    if (!bgUndo) { pushUndo(); bgUndo = true; }
+    sc.bg = c.slice(0, 3); $("#bgColor").style.background = hex(c); bgHex.value = hex(c); touch();
+    if (done) bgUndo = false;
+  };
+  const bgPicker = makePicker(bgHost, (c, done) => { if (!sc.bg && mode === "icon") { $("#bgNone").checked = false; } setBg(c, done); });
+  bgHex.addEventListener("change", () => { const c = parseHex(bgHex.value); if (c) { setBg([...c, 255], true); bgPicker.set(c); } });
+  function parseHex(v) {
+    let m = String(v).trim().replace(/^#/, "");
+    if (/^[0-9a-f]{3}$/i.test(m)) m = m.split("").map(ch => ch + ch).join("");
+    return /^[0-9a-f]{6}$/i.test(m) ? unhex("#" + m) : null;
   }
   function syncTints() {   // each tool icon shows its own colour
     document.querySelectorAll("#tools [data-tool]").forEach(b => {
@@ -401,7 +509,8 @@ const Editor = (() => {
   /* ---------------------------------------------------------------- modes */
   function fullRefresh() { layout(); renderLayers(); renderProps(); replan(); stripDirty = true; touch(); renderSceneProps(); }
   function renderSceneProps() {
-    $("#bgNone").checked = !sc.bg; $("#bgColor").value = sc.bg ? hex(sc.bg) : "#000000"; $("#bgNoneWrap").classList.toggle("hidden", mode !== "icon");
+    $("#bgNone").checked = !sc.bg; $("#bgColor").style.background = sc.bg ? hex(sc.bg) : "repeating-conic-gradient(#3a3a3a 0 25%, #222 0 50%) 0 0 / 8px 8px";
+    $("#bgNoneWrap").classList.toggle("hidden", mode !== "icon");
   }
   function setMode(m) {   // m = project type: "anim" (52x32, motion, live preview) or "icon" (any size, frames only)
     mode = m; sc = docs[m];
@@ -462,7 +571,7 @@ const Editor = (() => {
     if (on) { setPlaying(false); $("#liveChk").checked = false; renderHome(); } else layout();
   }
   async function leaveProject() {   // everything is saved, so leaving never loses work
-    if (proj.open && proj.edited) { try { await saveProject(true); } catch (e) { return confirm(`Couldn't save "${proj.name}" (${e.message}). Leave anyway?`); } }
+    if (proj.open && proj.edited) { try { await saveProject(true); } catch (e) { return ask(`Couldn't save "${proj.name}" (${e.message}). Leave anyway?`, { ok: "Leave", danger: true }); } }
     return true;
   }
   function load(s, type, name, rev, sent) {
@@ -482,7 +591,7 @@ const Editor = (() => {
     let w = PW, h = PH;
     if (type === "icon") {
       let v = $("#newIconSize").value;
-      if (v === "custom") { v = prompt("Icon size, width × height (up to 52×32)", "16x16"); if (!v) return; }
+      if (v === "custom") { v = await askText("Icon size, width × height (up to 52×32)", "16x16", { ok: "Create" }); if (!v) return; }
       const m = v.match(/(\d+)\s*[x×*]\s*(\d+)/i); if (!m) return toast("Size like 16x16", true);
       w = Math.max(1, Math.min(PW, +m[1])); h = Math.max(1, Math.min(PH, +m[2]));
     }
@@ -519,7 +628,7 @@ const Editor = (() => {
     const kind = proj.type === "icon" ? "icons" : "anims", ext = kind === "icons" ? ".pxi" : ".anim";
     const ours = proj.sent && proj.sent.as === proj.name;
     if (lib[kind].some(f => f.name === proj.name + ext) && !ours &&
-        !confirm(`"${proj.name}" is already on the display, and it wasn't made from this project.\n\nReplace it with this project?`)) return;
+        !await ask(`"${proj.name}" is already on the display, and it wasn't made from this project.\n\nReplace it with this project?`, { ok: "Replace", danger: true })) return;
     try {
       await saveProject(true);
       const { frames } = Scene.bake(sc, 450);
@@ -533,16 +642,16 @@ const Editor = (() => {
     } catch (e) { toast(e.message, true); }
   }
   async function renameProject() {
-    const n = prompt("Project name", proj.name); if (n === null) return;
+    const n = await askText("Project name", proj.name, { ok: "Rename" }); if (n === null) return;
     const name = n.trim().replace(/[\\/"\x00-\x1f]+/g, " ").trim(); if (!name || name === proj.name) return;
     await refreshOpenList();
-    if (projects.some(p => p.name.toLowerCase() === name.toLowerCase()) && !confirm(`A project called "${name}" already exists. Replace it?`)) return;
+    if (projects.some(p => p.name.toLowerCase() === name.toLowerCase()) && !await ask(`A project called "${name}" already exists. Replace it?`, { ok: "Replace", danger: true })) return;
     const old = proj.name; proj.name = name; markEdited();
     try { await saveProject(true); await api(`/scenes/${enc(old)}`, { method: "DELETE" }); toast(`Renamed to "${name}"`); refreshOpenList(); }
     catch (e) { proj.name = old; syncDoc(); toast(e.message, true); }
   }
   async function deleteProject(name) {
-    if (!confirm(`Delete the project "${name}"? This can't be undone. Anything already sent to the display stays there.`)) return;
+    if (!await ask(`Delete the project "${name}"? This can't be undone. Anything already sent to the display stays there.`, { ok: "Delete", danger: true })) return;
     try {
       await api(`/scenes/${enc(name)}`, { method: "DELETE" });
       if (proj.open && proj.name === name) { proj.open = false; proj.edited = false; showHome(true); }
@@ -665,14 +774,58 @@ const Editor = (() => {
   $("#frDel").addEventListener("click", () => { if (L().frames.length < 2) return toast("A layer needs at least one frame", true); frOp((l, s) => { l.frames.splice(s.f, 1); s.f = Math.max(0, s.f - 1); }); });
   $("#frLeft").addEventListener("click", () => { if (sel[mode].f > 0) frOp((l, s) => { [l.frames[s.f - 1], l.frames[s.f]] = [l.frames[s.f], l.frames[s.f - 1]]; s.f--; }); });
   $("#frRight").addEventListener("click", () => { if (sel[mode].f < L().frames.length - 1) frOp((l, s) => { [l.frames[s.f + 1], l.frames[s.f]] = [l.frames[s.f], l.frames[s.f + 1]]; s.f++; }); });
+  // Shift: move a frame's pixels (wrapping round, or falling off the edge), or add a run of frames that each move a
+  // step further: scrolling textures, rivers, clouds, conveyor belts. With wrap on, the run loops seamlessly once
+  // it has gone all the way round (fit loop).
+  function shifted(f, dx, dy, wrap) {
+    const out = new Uint8ClampedArray(f.rgba.length);
+    for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) {
+      let sx = x - dx, sy = y - dy;
+      if (wrap) { sx = ((sx % f.w) + f.w) % f.w; sy = ((sy % f.h) + f.h) % f.h; }
+      else if (sx < 0 || sy < 0 || sx >= f.w || sy >= f.h) continue;
+      const s = (sy * f.w + sx) * 4; out.set(f.rgba.subarray(s, s + 4), (y * f.w + x) * 4);
+    }
+    return out;
+  }
+  function shiftPixels(dx, dy) {
+    const all = $("#shiftScope").value === "all", wrap = $("#shiftWrap").checked;
+    frOp(l => { for (const f of all ? l.frames : [F()]) f.rgba = shifted(f, dx, dy, wrap); });
+  }
+  const gcd = (a, b) => (b ? gcd(b, a % b) : Math.abs(a));
+  function loopCount() {   // frames until the shifted copies come back round to the start
+    const f = F(), dx = Math.round(+$("#genDx").value || 0), dy = Math.round(+$("#genDy").value || 0);
+    const nx = dx ? f.w / gcd(f.w, Math.abs(dx)) : 1, ny = dy ? f.h / gcd(f.h, Math.abs(dy)) : 1;
+    return nx / gcd(nx, ny) * ny;
+  }
+  document.querySelectorAll("#shiftBar [data-sx]").forEach(b => b.addEventListener("click", () => shiftPixels(+b.dataset.sx, +b.dataset.sy)));
+  $("#frShiftBtn").addEventListener("click", () => { $("#shiftBar").classList.toggle("hidden"); $("#frShiftBtn").classList.toggle("on"); });
+  $("#genFit").addEventListener("click", () => {
+    const n = loopCount() - 1;
+    if (n < 1) return toast("Set a step (x or y) first", true);
+    $("#genN").value = n; $("#shiftWrap").checked = true;
+    toast(`${n + 1} frames in total: the last one flows back into this one`);
+  });
+  $("#genBtn").addEventListener("click", () => {
+    const n = Math.max(1, Math.min(256, Math.round(+$("#genN").value || 1)));
+    const dx = Math.round(+$("#genDx").value || 0), dy = Math.round(+$("#genDy").value || 0), wrap = $("#shiftWrap").checked;
+    if (!dx && !dy) return toast("Set a step (x or y) for each frame", true);
+    const src = F();
+    frOp((l, s) => {
+      const fr = [];
+      for (let k = 1; k <= n; k++) fr.push({ w: src.w, h: src.h, delay: src.delay, rgba: shifted(src, k * dx, k * dy, wrap) });
+      l.frames.splice(s.f + 1, 0, ...fr);
+    });
+    toast(`Added ${n} frames to "${L().name}", each moved ${dx}, ${dy}`);
+  });
+
   $("#playBtn").addEventListener("click", () => setPlaying(!playing));
   $("#timeSlider").addEventListener("input", e => { if (playing) setPlaying(false); t = +e.target.value; syncTime(); touch(); });
   $("#onionChk").addEventListener("change", () => { dirty = true; });
-  $("#bgColor").addEventListener("input", e => { if (!sc.bg && mode === "icon") return; sc.bg = unhex(e.target.value); touch(); });
-  $("#bgNone").addEventListener("change", e => { pushUndo(); sc.bg = e.target.checked ? null : unhex($("#bgColor").value); touch(); });
-  $("#iconSizeBtn").addEventListener("click", () => {
+  let lastBg = [0, 0, 0];
+  $("#bgNone").addEventListener("change", e => { pushUndo(); if (sc.bg) lastBg = sc.bg; sc.bg = e.target.checked ? null : lastBg; renderSceneProps(); touch(); });
+  $("#iconSizeBtn").addEventListener("click", async () => {
     closeMenus();
-    const v = prompt("Icon size, width × height (up to 52×32). Layers keep their pixels.", `${sc.w}x${sc.h}`); if (!v) return;
+    const v = await askText("Icon size, width × height (up to 52×32). Layers keep their pixels.", `${sc.w}x${sc.h}`, { ok: "Resize" }); if (!v) return;
     const m = v.match(/(\d+)\s*[x×*]\s*(\d+)/i); if (!m) return toast("Size like 16x16", true);
     pushUndo(); sc.w = Math.max(1, Math.min(PW, +m[1])); sc.h = Math.max(1, Math.min(PH, +m[2])); fullRefresh(); syncDoc();
   });
@@ -730,8 +883,24 @@ const Editor = (() => {
   cv.addEventListener("pointerdown", () => hidePop(true));
   $("#undoBtn").addEventListener("click", undo);
   $("#redoBtn").addEventListener("click", redo);
-  $("#color").addEventListener("input", e => setColor([...unhex(e.target.value), 255]));
-  $("#palette").replaceChildren(...PALETTE.map(h => el("button", { style: `background:${h}`, title: h, onclick: () => setColor([...unhex(h), 255]) })));
+  $("#colorSwatch").addEventListener("click", () => {
+    const p = $("#colorPick"), open = p.classList.toggle("hidden") === false;
+    if (open) { const tl = popTool || tool; flyPicker.set(colorOf(tl)); }
+  });
+  $("#colorHex").addEventListener("change", e => { const c = parseHex(e.target.value); if (c) setColor([...c, 255]); else showColor(colorOf(popTool || tool)); });
+  $("#colorHex").addEventListener("keydown", e => { if (e.key === "Enter") e.target.blur(); });
+  renderPalette();
+  $("#bgColor").addEventListener("click", e => {
+    e.stopPropagation();
+    if (!bgPop.classList.contains("hidden")) return bgPop.classList.add("hidden");
+    const c = sc.bg || [0, 0, 0]; bgPicker.set(c); bgHex.value = hex(c);
+    const r = e.currentTarget.getBoundingClientRect();
+    bgPop.classList.remove("hidden");
+    bgPop.style.left = Math.max(8, Math.min(r.left - 40, innerWidth - bgPop.offsetWidth - 8)) + "px";
+    bgPop.style.top = Math.min(r.bottom + 6, innerHeight - bgPop.offsetHeight - 8) + "px";
+  });
+  bgPop.addEventListener("click", e => e.stopPropagation());
+  document.addEventListener("click", () => { if (!bgPop.classList.contains("hidden")) { bgPop.classList.add("hidden"); if (sc.bg) useColor(sc.bg); } });
   document.addEventListener("keydown", e => {
     if (e.target.matches("input, select, textarea") || !$("#tab-editor").classList.contains("active")) return;
     const k = e.key.toLowerCase();
@@ -744,6 +913,10 @@ const Editor = (() => {
     }
     const tools = { p: "pencil", e: "eraser", f: "fill", l: "line", s: "shape", r: "shape", i: "pick", m: "move" };
     if (tools[k] && !e.ctrlKey && !e.metaKey) return setTool(tools[k]);
+    if (k.startsWith("arrow") && e.shiftKey) {   // Shift + arrows: nudge the pixels of the frame (see the shift bar)
+      e.preventDefault();
+      return shiftPixels(k === "arrowleft" ? -1 : k === "arrowright" ? 1 : 0, k === "arrowup" ? -1 : k === "arrowdown" ? 1 : 0);
+    }
     if (k.startsWith("arrow") && tool === "move") {
       e.preventDefault(); pushUndo(); const l = L();
       l.x += k === "arrowleft" ? -1 : k === "arrowright" ? 1 : 0; l.y += k === "arrowup" ? -1 : k === "arrowdown" ? 1 : 0;

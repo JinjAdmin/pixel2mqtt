@@ -88,7 +88,9 @@
       </div>
       <div class="tp-sec" id="tpColor">
         <div class="tp-label">Colour</div>
-        <div class="row"><input id="color" type="color" value="#ff8800"><span id="colorHex">#ff8800</span></div>
+        <div class="row"><button id="colorSwatch" class="swatch" title="Pick a custom colour"></button><input id="colorHex" class="hexin" maxlength="7" spellcheck="false" title="Hex colour, e.g. #ff8800"></div>
+        <div id="colorPick" class="cpick hidden"></div>
+        <div class="tp-label">Recent <span class="muted">(last 18 used)</span></div>
         <div id="palette" class="palette"></div>
       </div>
     </div>
@@ -118,6 +120,7 @@
         <button id="playBtn" title="Play / pause (Space)">▶</button>
         <input id="timeSlider" type="range" min="0" max="1000" value="0" step="1">
         <span id="timeLabel" class="small muted">0.00 s</span>
+        <span id="loopHint" class="loophint small"></span>
         <label class="small" title="Show the previous frame of this layer faintly"><input id="onionChk" type="checkbox" checked> onion skin</label>
         <span class="grow"></span><span id="cursorPos" class="small muted">–</span><span id="liveInfo" class="small muted"></span>
       </div>
@@ -125,8 +128,21 @@
         <div class="row"><b>Frames</b><span id="framesOf" class="muted small"></span><span class="allfr" title="Give every frame of this layer the same duration"><input id="frAllMs" type="number" min="20" max="10000" step="10" value="100"> ms <button id="frAllBtn">Set all frames</button></span><span class="grow"></span>
           <button id="frAdd" title="New blank frame after this one">+ blank</button>
           <button id="frDup" title="Duplicate this frame">⧉ duplicate</button>
+          <button id="frShiftBtn" title="Shift the pixels of a frame, or make a run of frames that each move a step (Shift + arrow keys nudge the frame)">⇆ shift</button>
           <button id="frLeft" title="Move frame earlier">◀</button><button id="frRight" title="Move frame later">▶</button>
           <button id="frDel" title="Delete this frame">✕</button>
+        </div>
+        <div id="shiftBar" class="shiftbar hidden">
+          <span class="grp"><b>Shift pixels</b>
+            <button data-sx="-1" data-sy="0" title="Left (Shift+←)">←</button><button data-sx="0" data-sy="-1" title="Up (Shift+↑)">↑</button><button data-sx="0" data-sy="1" title="Down (Shift+↓)">↓</button><button data-sx="1" data-sy="0" title="Right (Shift+→)">→</button>
+            <select id="shiftScope" title="Which frames to shift"><option value="frame">this frame</option><option value="all">all frames</option></select>
+            <label class="small"><input id="shiftWrap" type="checkbox" checked> wrap around</label></span>
+          <span class="grp"><b>Make frames</b> add
+            <input id="genN" type="number" min="1" max="256" value="8" title="How many frames to add after this one"> frames, each moved
+            x <input id="genDx" type="number" min="-52" max="52" value="1" title="Pixels right per frame (negative = left)">
+            y <input id="genDy" type="number" min="-32" max="32" value="0" title="Pixels down per frame (negative = up)">
+            <button id="genFit" title="Set the count so the last frame flows back into this one (needs wrap around)">fit loop</button>
+            <button id="genBtn" class="primary">Add frames</button></span>
         </div>
         <div id="frameStrip" class="strip"></div>
       </div>
@@ -136,7 +152,7 @@
         <h3>Layers <span class="muted small">(top first)</span></h3>
         <div id="layerList" class="layerlist"></div>
         <div class="ly bgrow" title="Background: drawn under every layer">
-          <input id="bgColor" type="color" value="#000000"><span class="n">Background</span>
+          <button id="bgColor" class="swatch small" title="Background colour"></button><span class="n">Background</span>
           <label class="small" id="bgNoneWrap"><input id="bgNone" type="checkbox"> transparent</label>
         </div>
         <div class="btns">

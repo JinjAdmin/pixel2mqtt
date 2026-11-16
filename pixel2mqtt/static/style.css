@@ -207,3 +207,33 @@ button.danger { color: var(--bad); }
 .helpbody th, .helpbody td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
 .helpbody th { background: var(--panel2); }
 .helpbody pre { background: var(--panel2); padding: 8px; border-radius: 6px; overflow-x: auto; }
+.ask { width: min(420px, 92vw); padding: 18px 20px 14px; }
+.ask h3 { margin: 0 0 6px; }
+.askmsg { margin: 0 0 12px; white-space: pre-line; line-height: 1.45; }
+.ask input[type=text] { width: 100%; margin-bottom: 12px; }
+.askbtns { display: flex; justify-content: flex-end; gap: 8px; }
+button.dangerbtn { background: var(--bad); border-color: var(--bad); color: #fff; }
+.swatch { width: 34px; height: 28px; padding: 0; border: 2px solid var(--line); border-radius: 6px; }
+.swatch.small { width: 24px; height: 18px; border-width: 1px; border-radius: 3px; }
+.hexin { width: 86px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.cpick { margin-top: 8px; }
+.cp-sv { position: relative; height: 110px; border-radius: 6px; cursor: crosshair; touch-action: none; }
+.cp-hue { position: relative; height: 14px; margin-top: 8px; border-radius: 7px; cursor: ew-resize; touch-action: none;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+.cp-knob { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border: 2px solid #fff; border-radius: 50%;
+  box-shadow: 0 0 0 1px #000, inset 0 0 0 1px #0006; pointer-events: none; }
+.cp-hue .cp-knob { top: 50%; }
+.cpop { position: fixed; z-index: 40; width: 200px; padding: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 8px 24px #0008; }
+.cpop .cpick { margin-top: 0; }
+.cpop .row { justify-content: space-between; margin-top: 8px; }
+.palette button.on { outline: 2px solid #fff; outline-offset: 1px; }
+.loophint { margin-left: 8px; cursor: help; }
+.loophint.ok { color: var(--ok); }
+.loophint.warn { color: #e8a33a; }
+.loophint.info { color: var(--accent2); }
+.shiftbar { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 8px 10px; margin: 2px 0 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+.shiftbar .grp { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.shiftbar .grp > b { margin-right: 2px; }
+.shiftbar button[data-sx] { width: 30px; padding: 4px 0; }
+.shiftbar input[type=number] { width: 54px; }
+button.on { border-color: var(--accent); }

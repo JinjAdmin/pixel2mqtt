@@ -54,6 +54,10 @@ The toolbar sits on the left. Hover a tool to open its settings. On touch screen
 - Right-click erases with the pencil and line tools.
 - Ctrl+Z undoes and Ctrl+Y redoes.
 
+![Colour picker and recent colours](guide/picker.png)
+
+**Colours:** click the colour swatch in a tool's settings to open the picker (drag in the square for shade, along the bar for hue), or type a hex code such as `#ff8800` or `#f80`. Below it, the palette keeps the **last 18 colours you painted with**, newest first, topped up with a default set until you've used 18.
+
 ![Shape settings](guide/flyout-shape.png)
 
 The **Shape** tool draws a rectangle, oval, triangle, diamond or trapezoid inside the box you drag. Hold **Shift** to keep it square or round.
@@ -66,7 +70,7 @@ A scene is a stack of layers. The top of the list is drawn on top. The eye icon 
 
 - **Duplicate**, **▲ ▼**, **Clear** and **Delete** act on the selected layer.
 - **Add a layer:** **+ Blank**, **+ Image** (a PNG or GIF scaled to fit), **+ From display** (a layer from an animation on the display) or **+ Icon** (one of your icon projects).
-- **Background** sets the colour behind every layer. Tick **transparent** for none.
+- **Background** sets the colour behind every layer: click its swatch to pick one. Tick **transparent** for none (icons only).
 
 The **Layer** panel holds the selected layer's settings:
 
@@ -88,10 +92,16 @@ Each layer has its own frames, so a spinning object and a still background can s
 - To give every frame of the selected layer the same duration, type it next to **Frames** and press **Set all frames** (or Enter).
 - **+ blank** adds an empty frame, and **duplicate** copies the current one, which is the quickest way to animate small changes.
 - **◀ ▶** reorder frames and **✕** deletes one.
+- **⇆ shift** opens tools for moving pixels:
+  - **Shift pixels** moves this frame (or all frames) one pixel left, up, down or right. Turn on **wrap around** to bring what leaves one edge back in at the other. **Shift + arrow keys** do the same from the keyboard.
+  - **Make frames** adds a run of frames after this one, each moved a further x, y pixels: the quick way to scroll clouds, water or a texture. **fit loop** picks the count where the last frame flows straight back into the first.
+
+![Shift tools](guide/shift.png)
+
 - **Onion skin** faintly shows the previous frame while you draw.
 - ▶ plays the whole scene. The slider scrubs through it and shows the loop length.
 
-**Seamless loops:** the scene loops at the length of its longest layer. To avoid a jump at the loop point, make the other layers' lengths and any blink intervals divide evenly into that loop. For example, in a 2.24 s loop, use blinks of 560 ms or 1120 ms.
+**Seamless loops:** the scene loops when every layer's frames and blinks have repeated a whole number of times. The hint next to the time shows whether it **loops seamlessly**, was **stretched** to fit every layer, or has a layer that **won't loop evenly** (that one jumps at the loop point). Hover the hint for the details. For example, in a 2.24 s loop, blinks of 560 ms or 1120 ms fit (a blink cycle is on plus off, so twice the blink time).
 
 ## Icons
 

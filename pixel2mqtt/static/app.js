@@ -23,6 +23,30 @@ function toast(msg, err) {
   const t = $("#toast"); t.textContent = msg; t.className = "show" + (err ? " err" : "");
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.className = ""), err ? 6000 : 2500);
 }
+// Styled replacements for confirm() / prompt(): ask(message, {ok, danger}) -> Promise<boolean>,
+// askText(message, value, {ok, placeholder}) -> Promise<string|null>. Enter = OK, Esc = Cancel.
+function dialogBox(message, { ok = "OK", cancel = "Cancel", danger = false, input = null, title = "" } = {}) {
+  return new Promise(resolve => {
+    const field = input === null ? null : el("input", { type: "text", value: input.value || "", placeholder: input.placeholder || "", spellcheck: "false" });
+    const okBtn = el("button", { cls: danger ? "primary dangerbtn" : "primary", value: "ok" }, ok);
+    const form = el("form", { method: "dialog", cls: "askform" },
+      title ? el("h3", {}, title) : "",
+      el("p", { cls: "askmsg" }, message),
+      field || "",
+      el("div", { cls: "btns askbtns" }, el("button", { value: "cancel", type: "button", onclick: () => d.close("cancel") }, cancel), okBtn));
+    const d = el("dialog", { cls: "ask" }, form);
+    form.addEventListener("submit", e => { e.preventDefault(); d.close("ok"); });
+    d.addEventListener("close", () => {
+      const yes = d.returnValue === "ok";
+      d.remove();
+      resolve(field ? (yes ? field.value : null) : yes);
+    });
+    document.body.append(d); d.showModal();
+    if (field) { field.focus(); field.select(); } else okBtn.focus();
+  });
+}
+const ask = (message, opts) => dialogBox(message, opts);
+const askText = (message, value, opts = {}) => dialogBox(message, { ...opts, input: { value, placeholder: opts.placeholder } });
 const fmtBytes = n => n >= 1 << 20 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " B";
 const hex = c => "#" + c.slice(0, 3).map(v => v.toString(16).padStart(2, "0")).join("");
 const unhex = h => [1, 3, 5].map(i => parseInt(h.substr(i, 2), 16));
@@ -172,13 +196,13 @@ async function cmd(name, payload) {
   try { await api(`/displays/${cur}/cmd/${name}`, { method: "POST", body: payload }); toast(`${name}: ${payload}`); } catch (e) { toast(e.message, true); }
 }
 async function renameAnim(name) {
-  const n = prompt("New name for " + stem(name), stem(name));
+  const n = await askText(`New name for "${stem(name)}"`, stem(name), { ok: "Rename" });
   if (n === null || !n.trim() || n.trim() === stem(name)) return;
   try { const r = await postJSON(`/displays/${cur}/rename`, { name, new: n.trim() }); toast("Renamed to " + stem(r.name)); await loadLibrary(); }
   catch (e) { toast(e.message, true); }
 }
 async function delFile(kind, name) {
-  if (!confirm(`Delete ${name} from the display? This can't be undone.`)) return;
+  if (!await ask(`Delete ${name} from the display? This can't be undone.`, { ok: "Delete", danger: true })) return;
   try { await api(`/displays/${cur}/files/${kind}/${enc(name)}`, { method: "DELETE" }); toast("Deleted " + name); await loadLibrary(); refreshStorage(); }
   catch (e) { toast(e.message, true); }
 }
@@ -236,7 +260,7 @@ async function importStock() {
 
 async function dedupeAnims() {
   if (!cur) return toast("Adopt a display first", true);
-  if (!confirm("Delete animations that are identical to another one? In each group the one with a real name is kept (over 'App ...' copies).")) return;
+  if (!await ask("Delete animations that are identical to another one? In each group the one with a real name is kept (over 'App ...' copies).", { ok: "Delete duplicates", danger: true })) return;
   const out = $("#importProg"), btn = $("#dedupeBtn");
   btn.disabled = true;
   try {
@@ -288,7 +312,7 @@ $("#adoptForm").addEventListener("submit", async e => {
   } catch (err) { $("#adoptErr").textContent = err.message; }
 });
 async function removeDisplay(d) {
-  if (!confirm(`Remove ${d.name}? pixel2mqtt forgets its token; the display goes back to its own MQTT after 5 minutes (if configured).`)) return;
+  if (!await ask(`Remove ${d.name}? pixel2mqtt forgets its token; the display goes back to its own MQTT after 5 minutes (if configured).`, { ok: "Remove", danger: true })) return;
   try { await api(`/displays/${d.id}`, { method: "DELETE" }); toast("Removed " + d.name); refreshStatus(); } catch (e) { toast(e.message, true); }
 }
 
