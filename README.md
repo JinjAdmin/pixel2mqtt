@@ -46,12 +46,19 @@ Animations are built from **layers** (top of the list = drawn on top). Each laye
 Add layers as blank, from an image or GIF (GIF frames become layer frames), from an icon, or from the display's
 current frame. ▶ plays the scene, and **Live on display** shows it on the panel while you edit.
 
-**Save** stores the scene (reopen it later from *Open*) and bakes it into a seamless loop on the display. Every
-moving layer's speed is nudged so that it wraps a whole number of times per loop. The result appears in Home
-Assistant's Animation list.
+**Tools:** pencil, eraser, fill, line, shape (rectangle, oval, triangle, diamond, trapezoid; outline or filled)
+and eyedropper. Hover a tool for its settings (size, brush tip, colour); every tool keeps its own.
 
-**Open** also works on any animation on the display. The built-in Govee scenes (Coffee Cat, Banana, Lighthouse,
-Starry Night, …) open as their real layers with their motion settings, so they're easy to remix. Saving one
+**Projects.** The Editor opens on a start screen: start a new animation or icon (icon size chosen up front),
+import a project file, or open a copy of any animation on the display. Your work is a **project** stored by
+pixel2mqtt: **Save** (and autosave every few seconds) keeps it editable without touching the display, and
+**Send to display** bakes it into a seamless loop under the project's name. Every moving layer's speed is nudged
+so it wraps a whole number of times per loop, and the result appears in Home Assistant's Animation list. The
+status shows *Draft*, *On display* or *Changed since sent*, and pixel2mqtt warns before replacing something on the
+display that wasn't made from that project. Projects can be exported and imported as `.pixel2mqtt.json` files.
+
+Opening an animation from the display starts a copy. The built-in Govee scenes (Coffee Cat, Banana, Lighthouse,
+Starry Night, …) open as their real layers with their motion settings, so they're easy to remix. Sending one
 unchanged reproduces the stock animation exactly; `tests/verify_stock_scenes.py` checks this for all 59.
 
 Everything you make is **saved on the display** (`.anim`, `.pxi` and sound files), so the displays keep working
