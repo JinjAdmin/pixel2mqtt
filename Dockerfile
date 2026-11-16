@@ -2,6 +2,8 @@
 FROM python:3.12-alpine
 WORKDIR /app
 COPY pixel2mqtt ./pixel2mqtt
+COPY docs/GUIDE.md ./docs/GUIDE.md
+COPY docs/guide ./docs/guide
 ENV PIXEL2MQTT_DATA=/app/data PYTHONUNBUFFERED=1
 VOLUME /app/data
 EXPOSE 8466

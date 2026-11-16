@@ -1,8 +1,11 @@
 "use strict";
-// Help drawer: shows the editor guide exactly as it is published on GitHub (docs/GUIDE.md on main).
+// Help drawer: shows the editor guide as published on GitHub (docs/GUIDE.md on main), or the copy bundled with
+// this install when GitHub can't be reached.
 (() => {
   const REPO = "https://github.com/SamWiIIiams/pixel2mqtt";
   const RAW = "https://raw.githubusercontent.com/SamWiIIiams/pixel2mqtt/main/docs/";
+  const LOCAL = "docs/";   // copy bundled with this install (relative, so it works behind HA Ingress)
+  let base = RAW;          // where the guide we're showing came from; its images load from the same place
   const PAGE = REPO + "/blob/main/docs/GUIDE.md";
   const $ = s => document.querySelector(s);
   let loaded = false;
@@ -10,9 +13,9 @@
   const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   // relative links/images in GUIDE.md are relative to docs/ in the repo
   const abs = (u, img) => /^[a-z]+:|^#/i.test(u) ? u
-    : img ? RAW + u.replace(/^\.\//, "")
+    : img ? base + u.replace(/^\.\//, "")
     : new URL(u, REPO + "/blob/main/docs/").href;
-  const safeUrl = u => /^(https?:|#)/i.test(u) ? u : "#";
+  const safeUrl = u => /^[a-z][\w+.-]*:/i.test(u) && !/^https?:/i.test(u) ? "#" : u;   // no javascript:, data: etc.
 
   function inline(s) {
     const codes = [];
@@ -72,19 +75,32 @@
     return out.join("\n");
   }
 
-  async function load(force) {
-    const body = $("#helpBody");
-    if (loaded && !force) return;
-    body.innerHTML = `<p class="muted">Loading the guide from GitHub…</p>`;
+  async function get(url, force, ms) {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
     try {
-      const r = await fetch(RAW + "GUIDE.md" + (force ? "?t=" + Date.now() : ""), { cache: force ? "reload" : "default" });
+      const r = await fetch(url + (force ? "?t=" + Date.now() : ""), { cache: force ? "reload" : "default", signal: ctl.signal });
       if (!r.ok) throw new Error("HTTP " + r.status);
-      body.innerHTML = render(await r.text());
-      loaded = true;
-    } catch (e) {
-      body.innerHTML = `<p>Couldn't load the guide from GitHub (${esc(String(e.message || e))}). ` +
-        `The guide needs internet access. You can also read it at <a href="${PAGE}" target="_blank" rel="noopener">github.com</a>.</p>`;
+      return await r.text();
+    } finally { clearTimeout(t); }
+  }
+
+  async function load(force) {
+    const body = $("#helpBody"), note = $("#helpSrc");
+    if (loaded && !force) return;
+    body.innerHTML = `<p class="muted">Loading the guide…</p>`;
+    let md = null;
+    try { md = await get(RAW + "GUIDE.md", force, 4000); base = RAW; note.textContent = "latest, from GitHub"; }
+    catch (e) {
+      try { md = await get(LOCAL + "GUIDE.md", force, 4000); base = LOCAL; note.textContent = "offline copy"; }
+      catch (e2) {
+        note.textContent = "";
+        body.innerHTML = `<p>Couldn't load the guide (${esc(String(e2.message || e2))}). ` +
+          `You can read it at <a href="${PAGE}" target="_blank" rel="noopener">github.com</a>.</p>`;
+        return;
+      }
     }
+    body.innerHTML = render(md);
+    loaded = true;
   }
 
   function open() {

@@ -15,6 +15,7 @@ from .device import FRAME_BYTES, APIError, send_frame
 
 log = logging.getLogger("web")
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
+DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs"   # the editor guide (repo docs/, /app/docs in the image)
 KINDS = ("anims", "icons", "sounds")
 MAX_UPLOAD = 48 << 20
 
@@ -154,10 +155,13 @@ def make_handler(mgr, config):
 
         def static(self, path):
             rel = path.lstrip("/") or "index.html"
-            f = (STATIC / rel).resolve()
-            if STATIC not in f.parents or not f.is_file():
+            root = STATIC
+            if rel.startswith("docs/"):   # bundled copy of the guide, for the help drawer
+                root, rel = DOCS.resolve(), rel[5:]
+            f = (root / rel).resolve()
+            if root not in f.parents or not f.is_file():
                 return self.err(404, "not found")
-            ctype = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
+            ctype = "text/markdown" if f.suffix == ".md" else mimetypes.guess_type(f.name)[0] or "application/octet-stream"
             if ctype.startswith("text/") or ctype in ("application/javascript",):
                 ctype += "; charset=utf-8"
             self.send(200, f.read_bytes(), ctype)
