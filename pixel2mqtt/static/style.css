@@ -52,7 +52,10 @@ main { padding: 14px; }
 .seg { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; cursor: pointer; }
 .toggle { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
 .toggle:has(input:checked) { border-color: var(--bad); color: #ffb3ae; }
-.canvaswrap { background: #000; border: 1px solid var(--line); border-radius: var(--r); padding: 8px; display: flex; justify-content: center; }
+.canvaswrap { background: #000; border: 1px solid var(--line); border-radius: var(--r); padding: 8px; display: flex; justify-content: center; position: relative; }
+.viewbar { position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 4px; background: rgba(20,22,28,.85); border: 1px solid var(--line); border-radius: var(--r); padding: 4px; }
+.viewbar button { padding: 2px 8px; }
+.viewbar #zoomLbl { min-width: 44px; text-align: center; }
 #cv { width: 100%; max-width: 1040px; image-rendering: pixelated; touch-action: none; cursor: crosshair; display: block; }
 .side .card { padding: 10px; }
 .palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin-top: 8px; }

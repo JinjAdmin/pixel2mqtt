@@ -24,6 +24,9 @@ const Editor = (() => {
   const sel = { anim: { l: 0, f: 0 }, icon: { l: 0, f: 0 } };
   let mode = "anim", sc = docs.anim, tool = "pencil";
   let playing = false, t = 0, t0 = 0, loopLen = 1000, drag = null, hover = null, dirty = true, cell = 20, stripDirty = true;
+  // camera over the workspace: centre (panel cells) and cell size (canvas px). The panel ("viewport") is at 0,0.
+  const CW = 1040, CH = 640, ZOOMS = [2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48];
+  let cam = { x: 26, y: 16 }, camKey = "", panMode = false, wheelAcc = 0, vis = { x: 0, y: 0, w: 52, h: 32 };
   const BRUSHES = [1, 2, 3, 4, 6];
   // separate brushes: pencil (also line and rectangle) and eraser, so switching keeps each one's settings
   // every tool keeps its own settings: pencil, line and rectangle (size, shape, colour), eraser (size, shape),
@@ -65,9 +68,39 @@ const Editor = (() => {
   function redo() { const h = hist[mode]; if (h.redo.length) { h.undo.push({ sc: Scene.clone(sc), s: { ...sel[mode] } }); restore(h.redo.pop()); } }
 
   /* ---------------------------------------------------------------- rendering */
-  function layout() {
-    cell = Math.max(6, Math.min(40, Math.floor(Math.min(1040 / sc.w, 640 / sc.h))));
-    cv.width = sc.w * cell; cv.height = sc.h * cell; cv.style.maxWidth = cv.width + "px"; dirty = true;
+  // The canvas is a fixed workspace around the panel (the "viewport"): zoom and pan freely. Outside the panel it shows
+  // the other layers dimmed and the selected layer at full brightness, so layers bigger than the panel (long scrolling
+  // backgrounds) can be drawn in full. A tiled layer shows one whole tile outside the panel (from the panel's
+  // top-left), not endless repeats. "Hide outside viewport" shows the panel only.
+  const hideOut = () => $("#vpOnly").checked;
+  const inPanel = (x, y) => x >= 0 && y >= 0 && x < sc.w && y < sc.h;
+  // pixel index in frame f of layer l (at offset ox, oy) shown at panel cell px, py, or -1
+  function sampleIdx(l, f, ox, oy, px, py) {
+    const inP = inPanel(px, py);
+    if (!inP && hideOut()) return -1;
+    let sx = px - ox, sy = py - oy;
+    if (l.tile) {
+      if (!inP && !(px >= 0 && py >= 0 && px < Math.max(sc.w, f.w) && py < Math.max(sc.h, f.h))) return -1;
+      sx = ((sx % f.w) + f.w) % f.w; sy = ((sy % f.h) + f.h) % f.h;
+    } else if (sx < 0 || sy < 0 || sx >= f.w || sy >= f.h) return -1;
+    return (sy * f.w + sx) * 4;
+  }
+  const fitCell = () => Math.max(2, Math.min(40, Math.floor(Math.min(CW / (sc.w + 12), CH / (sc.h + 8)))));
+  function recenter() { cell = fitCell(); cam = { x: sc.w / 2, y: sc.h / 2 }; syncZoom(); dirty = true; }
+  function syncZoom() { $("#zoomLbl").textContent = Math.round(cell / fitCell() * 100) + "%"; }
+  function zoomStep(dir, ax = CW / 2, ay = CH / 2) {   // keep the point under (ax, ay) canvas px in place
+    const i = ZOOMS.findIndex(z => z >= cell), j = dir > 0 ? (ZOOMS[i] > cell ? i : i + 1) : (i <= 0 ? 0 : i - 1);
+    const nc = ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, j === -1 ? ZOOMS.length - 1 : j))];
+    if (nc === cell) return;
+    const wx = cam.x + (ax - CW / 2) / cell, wy = cam.y + (ay - CH / 2) / cell;
+    cell = nc; cam = { x: wx - (ax - CW / 2) / cell, y: wy - (ay - CH / 2) / cell }; syncZoom(); dirty = true;
+  }
+  const origin = () => [Math.round(CW / 2 - cam.x * cell), Math.round(CH / 2 - cam.y * cell)];
+  function layout() {   // the canvas keeps its size; a new project (or a new icon size) recentres on the panel
+    if (cv.width !== CW) { cv.width = CW; cv.height = CH; }
+    const key = proj.name + "|" + mode + "|" + sc.w + "x" + sc.h;
+    if (key !== camKey) { camKey = key; recenter(); }
+    dirty = true;
   }
   // what the canvas shows: playing = the animation; paused = time t, with the selected layer on its selected frame
   function composite() {
@@ -75,37 +108,77 @@ const Editor = (() => {
     const l = L(), view = Object.assign({}, sc, { layers: sc.layers.map(x => x === l ? Object.assign({}, x, { frames: [F()] }) : x) });
     return Scene.render(view, t);
   }
-  function draw() {
-    const W = sc.w, H = sc.h, c = composite();
-    g.fillStyle = "#000"; g.fillRect(0, 0, cv.width, cv.height);
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const i = (y * W + x) * 4;
-      if (c[i + 3] === 0) { if (!sc.bg) { g.fillStyle = (x + y) % 2 ? "#2a2a2a" : "#1d1d1d"; g.fillRect(x * cell, y * cell, cell, cell); } continue; }
-      g.fillStyle = `rgb(${c[i]},${c[i + 1]},${c[i + 2]})`; g.fillRect(x * cell, y * cell, cell, cell);
+  // the scene over a block of cells V (panel coordinates), same blending as Scene.render; background inside the panel
+  function compose(V) {
+    const out = new Uint8ClampedArray(V.w * V.h * 4), sl = L();
+    if (sc.bg) for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) if (inPanel(V.x + x, V.y + y)) {
+      const d = (y * V.w + x) * 4; out[d] = sc.bg[0]; out[d + 1] = sc.bg[1]; out[d + 2] = sc.bg[2]; out[d + 3] = 255;
     }
-    const l = L();
+    for (const l of sc.layers) {
+      if (l.visible === false) continue;
+      if (l.blink > 0 && Math.floor(t / Math.max(20, l.blink)) % 2) continue;
+      const f = !playing && l === sl ? F() : Scene.frameAt(l, t), [ox, oy] = Scene.layerPos(l, t);
+      const op = Math.min(100, l.opacity === undefined ? 100 : l.opacity);
+      for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) {
+        const s = sampleIdx(l, f, ox, oy, V.x + x, V.y + y); if (s < 0) continue;
+        const a = Math.floor(f.rgba[s + 3] * op / 100); if (!a) continue;
+        const d = (y * V.w + x) * 4;
+        if (a === 255 || !out[d + 3]) { out[d] = f.rgba[s]; out[d + 1] = f.rgba[s + 1]; out[d + 2] = f.rgba[s + 2]; out[d + 3] = Math.max(out[d + 3], a); }
+        else for (let c = 0; c < 3; c++) out[d + c] = Math.floor((f.rgba[s + c] * a + out[d + c] * (255 - a)) / 255);
+      }
+    }
+    return out;
+  }
+  const off = document.createElement("canvas"), og = off.getContext("2d");
+  function draw() {
+    const [X0, Y0] = origin();
+    vis = { x: Math.floor(-X0 / cell), y: Math.floor(-Y0 / cell) };
+    vis.w = Math.ceil((CW - X0) / cell) - vis.x; vis.h = Math.ceil((CH - Y0) / cell) - vis.y;
+    const V = vis, c = compose(V), l = L(), f = F(), [lx, ly] = Scene.layerPos(l, t);
+    const img = new ImageData(V.w, V.h), px = img.data;
+    for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) {
+      const i = (y * V.w + x) * 4, wx = V.x + x, wy = V.y + y, inP = inPanel(wx, wy), chk = (wx + wy) & 1;
+      if (inP) {
+        if (c[i + 3]) { px[i] = c[i]; px[i + 1] = c[i + 1]; px[i + 2] = c[i + 2]; }
+        else { const v = chk ? 42 : 29; px[i] = px[i + 1] = px[i + 2] = v; }
+      } else {
+        let r, gg, b;
+        if (c[i + 3]) { r = c[i] * .4; gg = c[i + 1] * .4; b = c[i + 2] * .4; } else { r = gg = b = chk ? 20 : 14; }   // dimmed ...
+        const s = sampleIdx(l, f, lx, ly, wx, wy);                                                                       // ... except the selected layer
+        if (s >= 0 && f.rgba[s + 3]) { r = f.rgba[s]; gg = f.rgba[s + 1]; b = f.rgba[s + 2]; }
+        if (hideOut()) r = gg = b = 8;
+        px[i] = r; px[i + 1] = gg; px[i + 2] = b;
+      }
+      px[i + 3] = 255;
+    }
+    if (off.width !== V.w || off.height !== V.h) { off.width = V.w; off.height = V.h; }
+    og.putImageData(img, 0, 0);
+    g.imageSmoothingEnabled = false;
+    g.fillStyle = "#080808"; g.fillRect(0, 0, CW, CH);
+    g.drawImage(off, X0 + V.x * cell, Y0 + V.y * cell, V.w * cell, V.h * cell);
+    g.save(); g.translate(X0, Y0);   // everything below is drawn in panel coordinates
     if (!playing && $("#onionChk").checked && l.frames.length > 1 && sel[mode].f > 0) {  // previous frame, faint
-      const prev = l.frames[sel[mode].f - 1], [ox, oy] = Scene.layerPos(l, t);
+      const prev = l.frames[sel[mode].f - 1];
       g.globalAlpha = 0.3;
-      forEachLayerPixel(l, prev, ox, oy, (x, y, s) => { if (prev.rgba[s + 3]) { g.fillStyle = `rgb(${prev.rgba[s]},${prev.rgba[s + 1]},${prev.rgba[s + 2]})`; g.fillRect(x * cell, y * cell, cell, cell); } });
+      forEachLayerPixel(l, prev, lx, ly, (x, y, s) => { if (prev.rgba[s + 3]) { g.fillStyle = `rgb(${prev.rgba[s]},${prev.rgba[s + 1]},${prev.rgba[s + 2]})`; g.fillRect(x * cell, y * cell, cell, cell); } });
       g.globalAlpha = 1;
     }
     if (cell >= 8) {
       g.strokeStyle = "rgba(255,255,255,0.07)"; g.lineWidth = 1; g.beginPath();
-      for (let x = 1; x < W; x++) { g.moveTo(x * cell + .5, 0); g.lineTo(x * cell + .5, cv.height); }
-      for (let y = 1; y < H; y++) { g.moveTo(0, y * cell + .5); g.lineTo(cv.width, y * cell + .5); }
+      for (let x = V.x + 1; x < V.x + V.w; x++) { g.moveTo(x * cell + .5, V.y * cell); g.lineTo(x * cell + .5, (V.y + V.h) * cell); }
+      for (let y = V.y + 1; y < V.y + V.h; y++) { g.moveTo(V.x * cell, y * cell + .5); g.lineTo((V.x + V.w) * cell, y * cell + .5); }
       g.stroke();
     }
+    g.strokeStyle = "rgba(255,255,255,.85)"; g.lineWidth = 2; g.strokeRect(-1, -1, sc.w * cell + 2, sc.h * cell + 2);   // the panel
     if (!playing && !l.tile) {  // selected layer bounds
-      const [ox, oy] = Scene.layerPos(l, t), f = F();
-      g.setLineDash([4, 3]); g.strokeStyle = "#e8a33a"; g.lineWidth = 1.5; g.strokeRect(ox * cell + .5, oy * cell + .5, f.w * cell - 1, f.h * cell - 1); g.setLineDash([]);
+      g.setLineDash([4, 3]); g.strokeStyle = "#e8a33a"; g.lineWidth = 1.5; g.strokeRect(lx * cell + .5, ly * cell + .5, f.w * cell - 1, f.h * cell - 1); g.setLineDash([]);
     }
     if (drag && (drag.tool === "line" || drag.tool === "shape") && drag.cur) {
       g.fillStyle = drag.erase ? "rgba(255,255,255,.35)" : hex(colorOf(drag.tool)) + "cc";
       if (drag.tool === "shape") shapeCells(drag, (a, b) => g.fillRect(a * cell, b * cell, cell, cell));
       else { const br = brushOf("line", drag.erase); line(drag.x0, drag.y0, drag.cur[0], drag.cur[1], (x, y) => stamp(x, y, br, (a, b) => g.fillRect(a * cell, b * cell, cell, cell))); }
     }
-    if (hover && !drag && tool !== "move" && !playing) {
+    if (hover && !drag && tool !== "move" && !panMode && !playing) {
       g.strokeStyle = "rgba(255,255,255,.6)"; g.lineWidth = 1;
       const br = brushOf(tool);
       if (usesBrush(tool) && br.size > 1) {   // shade exactly the cells the brush will paint
@@ -113,14 +186,11 @@ const Editor = (() => {
         stamp(hover[0], hover[1], br, (a, b) => g.fillRect(a * cell, b * cell, cell, cell));
       } else g.strokeRect(hover[0] * cell + .5, hover[1] * cell + .5, cell - 1, cell - 1);
     }
+    g.restore();
   }
-  function forEachLayerPixel(l, f, ox, oy, fn) {
-    for (let y = 0; y < sc.h; y++) {
-      let sy = y - oy; if (l.tile) sy = ((sy % f.h) + f.h) % f.h; else if (sy < 0 || sy >= f.h) continue;
-      for (let x = 0; x < sc.w; x++) {
-        let sx = x - ox; if (l.tile) sx = ((sx % f.w) + f.w) % f.w; else if (sx < 0 || sx >= f.w) continue;
-        fn(x, y, (sy * f.w + sx) * 4);
-      }
+  function forEachLayerPixel(l, f, ox, oy, fn) {   // fn(x, y, index) for visible cells (panel coordinates) showing the layer
+    for (let y = vis.y; y < vis.y + vis.h; y++) for (let x = vis.x; x < vis.x + vis.w; x++) {
+      const s = sampleIdx(l, f, ox, oy, x, y); if (s >= 0) fn(x, y, s);
     }
   }
   function frame(now) {
@@ -160,10 +230,7 @@ const Editor = (() => {
   // screen cell -> pixel index in the selected layer's current frame (or -1)
   function layerIndex(x, y) {
     const l = L(), f = F(), [ox, oy] = Scene.layerPos(l, t);
-    let sx = x - ox, sy = y - oy;
-    if (l.tile) { sx = ((sx % f.w) + f.w) % f.w; sy = ((sy % f.h) + f.h) % f.h; }
-    if (sx < 0 || sy < 0 || sx >= f.w || sy >= f.h) return -1;
-    return (sy * f.w + sx) * 4;
+    return sampleIdx(l, f, ox, oy, x, y);
   }
   function setPx(x, y, c) { const i = layerIndex(x, y); if (i >= 0) { F().rgba.set(c, i); touch(); } }
   const usesBrush = tl => tl === "pencil" || tl === "eraser" || tl === "line";
@@ -297,23 +364,35 @@ const Editor = (() => {
     const st = [[x, y]], seen = new Set();
     while (st.length) {
       const [px, py] = st.pop(), k = px + "," + py;
-      if (seen.has(k) || px < 0 || py < 0 || px >= sc.w || py >= sc.h || getPx(px, py) !== target) continue;
+      if (seen.has(k) || seen.size > 70000 || getPx(px, py) !== target) continue;
       seen.add(k); setPx(px, py, c); st.push([px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]);
     }
   }
+  const canvasPt = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * CW / r.width, (e.clientY - r.top) * CH / r.height]; };
   function cellAt(e) {
-    const r = cv.getBoundingClientRect();
-    return [Math.floor((e.clientX - r.left) / r.width * sc.w), Math.floor((e.clientY - r.top) / r.height * sc.h)];
+    const [X0, Y0] = origin(), [cx, cy] = canvasPt(e);
+    return [Math.floor((cx - X0) / cell), Math.floor((cy - Y0) / cell)];
   }
+  // pan: middle button, Alt + drag, or the pan button; zoom: mouse wheel (around the cursor)
+  cv.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault(); });
+  cv.addEventListener("wheel", e => {
+    e.preventDefault(); wheelAcc += e.deltaY;
+    if (Math.abs(wheelAcc) < 40) return;
+    const [ax, ay] = canvasPt(e); zoomStep(wheelAcc < 0 ? 1 : -1, ax, ay); wheelAcc = 0;
+  }, { passive: false });
+  function setPan(on) { panMode = on; $("#panBtn").classList.toggle("on", on); cv.style.cursor = on ? "grab" : ""; dirty = true; }
   cv.addEventListener("contextmenu", e => e.preventDefault());
   cv.addEventListener("pointerdown", e => {
+    try { cv.setPointerCapture(e.pointerId); } catch (_) { /* synthetic events */ }
+    if (e.button === 1 || e.altKey || (panMode && e.button === 0)) {
+      const [px, py] = canvasPt(e); drag = { tool: "pan", px, py, cx: cam.x, cy: cam.y }; cv.style.cursor = "grabbing"; return;
+    }
     if (playing) setPlaying(false);
-    cv.setPointerCapture(e.pointerId);
     const [x, y] = cellAt(e), erase = e.button === 2;
     const tl = erase && (tool === "pencil" || tool === "line") ? "eraser" : tool;
     if (tl === "move") { pushUndo(); drag = { tool: tl, x0: x, y0: y, lx: L().x, ly: L().y }; return; }
     if (tl === "pick") {
-      const c = composite(), i = (y * sc.w + x) * 4;
+      const c = compose({ x, y, w: 1, h: 1 }), i = 0;
       if (c[i + 3]) setColor([c[i], c[i + 1], c[i + 2], 255], colorTool);
       setTool(colorTool); return;
     }
@@ -327,6 +406,7 @@ const Editor = (() => {
     const [x, y] = cellAt(e);
     hover = [x, y]; $("#cursorPos").textContent = `x ${x}, y ${y}`; dirty = true;
     if (!drag) return;
+    if (drag.tool === "pan") { const [px, py] = canvasPt(e); cam = { x: drag.cx - (px - drag.px) / cell, y: drag.cy - (py - drag.py) / cell }; return; }
     if (drag.tool === "move") { L().x = drag.lx + x - drag.x0; L().y = drag.ly + y - drag.y0; touch(); return; }
     if (drag.tool === "pencil" || drag.tool === "eraser") {
       line(drag.last[0], drag.last[1], x, y, (a, b) => paint(a, b, drag.tool === "eraser" ? ERASE : colorOf("pencil"), brushOf(drag.tool)));
@@ -334,6 +414,7 @@ const Editor = (() => {
     } else { drag.cur = [x, y]; drag.square = e.shiftKey; }
   });
   cv.addEventListener("pointerup", () => {
+    if (drag && drag.tool === "pan") { drag = null; cv.style.cursor = panMode ? "grab" : ""; dirty = true; return; }
     if (drag && drag.tool === "line") {
       const c = drag.erase ? ERASE : colorOf("line"), br = brushOf("line", drag.erase);
       line(drag.x0, drag.y0, drag.cur[0], drag.cur[1], (a, b) => paint(a, b, c, br));
@@ -350,6 +431,7 @@ const Editor = (() => {
   cv.addEventListener("pointerleave", () => { hover = null; dirty = true; $("#cursorPos").textContent = "–"; });
 
   function setTool(tl) {
+    if (panMode) setPan(false);
     tool = tl;
     if (settings[tl] && settings[tl].color) colorTool = tl;
     document.querySelectorAll("#tools [data-tool]").forEach(b => b.classList.toggle("active", b.dataset.tool === tl));
@@ -821,6 +903,11 @@ const Editor = (() => {
   $("#playBtn").addEventListener("click", () => setPlaying(!playing));
   $("#timeSlider").addEventListener("input", e => { if (playing) setPlaying(false); t = +e.target.value; syncTime(); touch(); });
   $("#onionChk").addEventListener("change", () => { dirty = true; });
+  $("#vpOnly").addEventListener("change", () => { dirty = true; });
+  $("#zoomIn").addEventListener("click", () => zoomStep(1));
+  $("#zoomOut").addEventListener("click", () => zoomStep(-1));
+  $("#recenterBtn").addEventListener("click", recenter);
+  $("#panBtn").addEventListener("click", () => setPan(!panMode));
   let lastBg = [0, 0, 0];
   $("#bgNone").addEventListener("change", e => { pushUndo(); if (sc.bg) lastBg = sc.bg; sc.bg = e.target.checked ? null : lastBg; renderSceneProps(); touch(); });
   $("#iconSizeBtn").addEventListener("click", async () => {
@@ -913,6 +1000,10 @@ const Editor = (() => {
     }
     const tools = { p: "pencil", e: "eraser", f: "fill", l: "line", s: "shape", r: "shape", i: "pick", m: "move" };
     if (tools[k] && !e.ctrlKey && !e.metaKey) return setTool(tools[k]);
+    if (k === "h" && !e.ctrlKey && !e.metaKey) return setPan(!panMode);
+    if ((k === "+" || k === "=") && !e.ctrlKey && !e.metaKey) return zoomStep(1);
+    if (k === "-" && !e.ctrlKey && !e.metaKey) return zoomStep(-1);
+    if (k === "0" && !e.ctrlKey && !e.metaKey) return recenter();
     if (k.startsWith("arrow") && e.shiftKey) {   // Shift + arrows: nudge the pixels of the frame (see the shift bar)
       e.preventDefault();
       return shiftPixels(k === "arrowleft" ? -1 : k === "arrowright" ? 1 : 0, k === "arrowup" ? -1 : k === "arrowdown" ? 1 : 0);

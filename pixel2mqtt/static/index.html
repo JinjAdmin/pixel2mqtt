@@ -113,9 +113,15 @@
           </div>
         </span>
         <span class="grow"></span>
+        <label class="toggle" title="Show only the panel: hide the parts of layers that lie outside it"><input id="vpOnly" type="checkbox"> Hide outside viewport</label>
         <label class="toggle" title="Stream the canvas to the display at ~30 fps"><input id="liveChk" type="checkbox"> <b>Live on display</b></label>
       </div>
-      <div class="canvaswrap"><canvas id="cv"></canvas></div>
+      <div class="canvaswrap"><canvas id="cv"></canvas>
+        <div class="viewbar">
+          <button id="panBtn" title="Pan: drag to move around the canvas (H). You can also drag with the middle mouse button or Alt + drag">✋</button>
+          <button id="zoomOut" title="Zoom out (−, or the mouse wheel)">−</button><span id="zoomLbl" class="small" title="Zoom (100 % = the panel fits)">100%</span><button id="zoomIn" title="Zoom in (+, or the mouse wheel)">+</button>
+          <button id="recenterBtn" title="Fit the panel in the middle again (0)">⌖ Recenter on viewport</button>
+        </div></div>
       <div class="playbar">
         <button id="playBtn" title="Play / pause (Space)">▶</button>
         <input id="timeSlider" type="range" min="0" max="1000" value="0" step="1">

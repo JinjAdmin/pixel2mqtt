@@ -95,6 +95,12 @@ The **Layer** panel holds the selected layer's settings:
 - **W / H**: the layer's size. Type a new size, then press:
   - **Crop / extend** to keep the pixels as they are, cutting off or adding empty space on the right and bottom;
   - **Scale** to resize the picture to fit (nearest-neighbour, so pixel art stays crisp).
+
+  A layer can be up to 256 × 256, which is how you make a long scrolling background that doesn't repeat every 52 pixels. The canvas is a workspace around the panel (the white box, also called the viewport). Outside it, the other layers are dimmed and the selected layer is shown at full brightness, so you can draw the parts that scroll in later. A tiled layer shows one whole tile there, starting from the panel's top-left corner.
+  - **Zoom** with the mouse wheel (around the cursor), the **−** / **+** buttons at the bottom right of the canvas, or the − and + keys.
+  - **Pan** by dragging with the middle mouse button, with Alt + drag, or with the **✋** button (H) switched on.
+  - **⌖ Recenter on viewport** (0) fits the panel in the middle again.
+  - **Hide outside viewport**, next to Live on display, shows the panel only. Drawing outside it then does nothing.
 - **Tile** repeats the layer across the whole screen, so a moving layer wraps around instead of sliding off.
 - **Motion** (the arrow pad) and **Speed** scroll the layer in one of eight directions. To keep the loop seamless, the speed is adjusted slightly so the layer wraps around a whole number of times per loop. A small tiled layer can scroll more slowly than a full-width one: Ringworld's stars are a 26-pixel tile, so they drift at about 4 px/s.
 - **Opacity**: how solid the layer is, from 100 % (covers what's underneath) to 0 % (invisible). In between, the layer is blended with the layers below it, which is good for haze, glows, shadows and nebulae. The display has no see-through pixels of its own; the blending is worked out when the scene is sent.
