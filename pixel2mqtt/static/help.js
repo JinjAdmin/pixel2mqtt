@@ -2,7 +2,7 @@
 // Help drawer: shows the editor guide bundled with this install (docs/GUIDE.md, copied into the image), so it always
 // matches the version the user is running rather than whatever is on GitHub's main branch.
 (() => {
-  const REPO = "https://github.com/SamWiIIiams/pixel2mqtt";
+  const REPO = "https://github.com/JinjAdmin/pixel2mqtt";
   const base = "docs/";   // relative, so it works behind HA Ingress
   const PAGE = REPO + "/blob/main/docs/GUIDE.md";
   const $ = s => document.querySelector(s);

@@ -73,6 +73,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           V="${GITHUB_REF_NAME#v}"
-          printf 'Docker image: `swilli23/pixel2mqtt:%s` (also `:latest`), for amd64 and arm64.\n\nSee the README for the compose file and setup. Needs a display running [pixeld-h6631](https://github.com/SamWiIIiams/pixeld-h6631).\n' "$V" > notes.md
+          printf 'Docker image: `swilli23/pixel2mqtt:%s` (also `:latest`), for amd64 and arm64.\n\nSee the README for the compose file and setup. Needs a display running [pixeld-h6631](https://github.com/JinjAdmin/pixeld-h6631).\n' "$V" > notes.md
           PRE=""; case "$GITHUB_REF_NAME" in *-*) PRE="--prerelease";; esac
           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --generate-notes $PRE

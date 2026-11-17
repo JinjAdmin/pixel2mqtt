@@ -1,7 +1,7 @@
 # pixel2mqtt
 
 A small bridge and web editor for **Govee H6631 52×32 pixel displays running custom firmware** (the `pixeld`
-daemon from [pixeld-h6631](https://github.com/SamWiIIiams/pixeld-h6631)). It works like zigbee2mqtt: one container talks to your MQTT
+daemon from [pixeld-h6631](https://github.com/JinjAdmin/pixeld-h6631)). It works like zigbee2mqtt: one container talks to your MQTT
 broker and Home Assistant for any number of displays. You get:
 
 - **One MQTT login for every display.** pixel2mqtt publishes Home Assistant discovery and state for each display,
@@ -67,18 +67,18 @@ Everything you make is **saved on the display** (`.anim`, `.pxi` and sound files
 when the container is down.
 
 ## Requirements
-- One or more H6631 displays running [pixeld-h6631](https://github.com/SamWiIIiams/pixeld-h6631) with the LAN
+- One or more H6631 displays running [pixeld-h6631](https://github.com/JinjAdmin/pixeld-h6631) with the LAN
   API (`api: 1` in `http://<display>/api/info`).
 - An MQTT broker (e.g. Mosquitto) and Home Assistant with the MQTT integration.
 - Docker, or Python ≥ 3.8 to run it directly. It uses no third-party packages.
 
 ## Home Assistant OS: install as an app (add-on)
-[![Add repository to my Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FSamWiIIiams%2Fpixel2mqtt-addon)
+[![Add repository to my Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FJinjAdmin%2Fpixel2mqtt-addon)
 
-Running Home Assistant OS (or Supervised)? Add the repository `https://github.com/SamWiIIiams/pixel2mqtt-addon`
+Running Home Assistant OS (or Supervised)? Add the repository `https://github.com/JinjAdmin/pixel2mqtt-addon`
 under Settings → Apps → Install app → ⋮ → Repositories (older versions: Add-ons → Add-on Store), then install
 **pixel2mqtt**. It uses the Mosquitto app's login automatically, and its web UI opens inside Home Assistant
-(Ingress). Details: the [add-on documentation](https://github.com/SamWiIIiams/pixel2mqtt-addon/blob/main/pixel2mqtt/DOCS.md).
+(Ingress). Details: the [add-on documentation](https://github.com/JinjAdmin/pixel2mqtt-addon/blob/main/pixel2mqtt/DOCS.md).
 
 Running Home Assistant in a container instead? Use Docker as below.
 
