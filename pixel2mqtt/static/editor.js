@@ -648,7 +648,7 @@ const Editor = (() => {
     $("#projList").replaceChildren(...(list.length ? list.map(p => {
       const m = projectMeta(p), [st, cls] = statusOf(p.name, m, false);
       return el("div", { cls: "projrow" },
-        el("span", { cls: "badge" }, m.type === "icon" ? `Icon ${p.w}×${p.h}` : "Animation"),
+        el("span", { cls: "badge" }, m.type === "icon" ? `Icon ${p.w}×${p.h}` : m.type === "screen" ? "Screen" : "Animation"),
         el("button", { cls: "projname", title: "Open", onclick: () => openProject(p.name) }, p.name),
         el("span", { cls: "chip " + cls }, st), el("span", { cls: "muted small" }, ago(p.mtime)),
         el("button", { title: "Open", onclick: () => openProject(p.name) }, "Open"),
@@ -663,6 +663,7 @@ const Editor = (() => {
     if (on) { setPlaying(false); $("#liveChk").checked = false; renderHome(); } else layout();
   }
   async function leaveProject() {   // everything is saved, so leaving never loses work
+    if (typeof Screens !== "undefined" && Screens.isOpen()) { try { await Screens.save(true); } catch (e) { if (!await ask(`Couldn't save the screen (${e.message}). Leave anyway?`, { ok: "Leave", danger: true })) return false; } Screens.close(); }
     if (proj.open && proj.edited) { try { await saveProject(true); } catch (e) { return ask(`Couldn't save "${proj.name}" (${e.message}). Leave anyway?`, { ok: "Leave", danger: true }); } }
     return true;
   }
@@ -674,7 +675,9 @@ const Editor = (() => {
   async function openProject(name) {
     if (!await leaveProject()) return;
     try {
-      const s = Scene.fromJSON(await api(`/scenes/${enc(name)}`)), m = projectMeta({ ...s, name, meta: s.meta });
+      const raw = await api(`/scenes/${enc(name)}`);
+      if (raw.meta && raw.meta.type === "screen") { proj.open = false; $("#projHome").classList.add("hidden"); $("#editorMain").classList.add("hidden"); Screens.open(name, raw); return; }
+      const s = Scene.fromJSON(raw), m = projectMeta({ ...s, name, meta: s.meta });
       load(s, m.type, name, m.rev || 0, m.sent || null);
     } catch (e) { toast(e.message, true); }
   }
@@ -745,6 +748,9 @@ const Editor = (() => {
   async function deleteProject(name) {
     if (!await ask(`Delete the project "${name}"? This can't be undone. Anything already sent to the display stays there.`, { ok: "Delete", danger: true })) return;
     try {
+      const p = projects.find(x => x.name === name), m = p ? projectMeta(p) : {};
+      if (m.type === "screen" && m.sent && cur && await ask(`"${m.sent.as}" is also on the display. Remove it from the display too? Its value bindings stop.`, { ok: "Remove from display", cancel: "Keep it there" }))
+        await api(`/displays/${cur}/screens/${enc(m.sent.as)}`, { method: "DELETE" });
       await api(`/scenes/${enc(name)}`, { method: "DELETE" });
       if (proj.open && proj.name === name) { proj.open = false; proj.edited = false; showHome(true); }
       toast(`Deleted project "${name}"`); refreshOpenList();
@@ -1000,6 +1006,7 @@ const Editor = (() => {
   document.addEventListener("click", () => { if (!bgPop.classList.contains("hidden")) { bgPop.classList.add("hidden"); if (sc.bg) useColor(sc.bg); } });
   document.addEventListener("keydown", e => {
     if ((e.target.matches && e.target.matches("input, select, textarea")) || !$("#tab-editor").classList.contains("active")) return;
+    if (typeof Screens !== "undefined" && Screens.isOpen()) return;   // the screen editor has its own keys
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); return; }
@@ -1026,5 +1033,26 @@ const Editor = (() => {
   });
 
   syncTints(); syncShape(); setTool("pencil"); setMode("anim"); showHome(true); requestAnimationFrame(frame); refreshOpenList();
-  return { addIconLayer, editIcon, openAnim, refreshOpenList };
+  async function newScreen(fromExample) {
+    if (!await leaveProject()) return;
+    await refreshOpenList();
+    proj.open = false; $("#projHome").classList.add("hidden"); $("#editorMain").classList.add("hidden");
+    if (!fromExample) return Screens.create(uniqueName("Untitled screen", lower(projects.map(p => p.name))));
+    try {
+      const scr = await (await fetch(`examples/screens/${enc(fromExample.file)}`)).text();
+      let samples = null;
+      if (fromExample.values) { try { samples = await (await fetch(`examples/screens/${enc(fromExample.values)}`)).json(); } catch (e) { samples = null; } }
+      Screens.create(uniqueName(fromExample.name, lower(projects.map(p => p.name))), scr, samples);
+    } catch (e) { toast(e.message, true); showHome(true); }
+  }
+  function showProjects() { proj.open = false; showHome(true); refreshOpenList(); }
+  $("#newScreenBtn").addEventListener("click", () => newScreen());
+  fetch("examples/screens/index.json").then(r => r.ok ? r.json() : []).then(list => {   // New screen -> From example
+    if (!list.length) return;
+    const s = $("#screenExample");
+    s.append(...list.map((x, i) => el("option", { value: String(i) }, x.name)));
+    s.classList.remove("hidden");
+    s.addEventListener("change", () => { const x = list[+s.value]; s.value = ""; if (x) newScreen(x); });
+  }).catch(() => {});
+  return { addIconLayer, editIcon, openAnim, refreshOpenList, makePicker, showProjects };
 })();

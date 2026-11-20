@@ -42,6 +42,8 @@
         <button id="newAnimBtn" class="primary">+ New animation <span class="small">52×32</span></button>
         <span class="newicon"><button id="newIconBtn">+ New icon</button>
           <select id="newIconSize" title="Icon size"><option value="8x8">8×8</option><option value="16x16" selected>16×16</option><option value="24x24">24×24</option><option value="32x32">32×32</option><option value="custom">custom…</option></select></span>
+        <span class="newicon"><button id="newScreenBtn" title="An info screen: text, values from Home Assistant, icons, bars and sparklines">+ New screen</button>
+          <select id="screenExample" class="hidden" title="Start from an example screen"><option value="">From example…</option></select></span>
         <label class="btnlike" title="Open a project file exported from pixel2mqtt (.pixel2mqtt.json)">Import project file<input id="importProj" type="file" accept=".json,application/json" hidden></label>
       </div>
       <div class="newrow">
@@ -55,6 +57,7 @@
       <div id="projList" class="projlist"></div>
     </div>
   </div>
+  <div id="screenMain" class="screenmain hidden"></div>
   <div class="editor hidden" id="editorMain">
     <div class="tools" id="tools">
       <button data-tool="pencil" class="active" title="Pencil (P) - hover for size, shape and colour"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="tint" d="M4 20l1.2-4.2L15.6 5.4a2 2 0 0 1 2.8 0l.2.2a2 2 0 0 1 0 2.8L8.2 18.8z"/><path class="ink" d="M4 20l1.2-4.2 3 3zM14.2 6.8l3 3"/></svg></button>
@@ -264,6 +267,8 @@
 <script src="scene.js"></script>
 <script src="app.js"></script>
 <script src="editor.js"></script>
+<script src="screenrender.js"></script>
+<script src="screen.js"></script>
 <script src="help.js"></script>
 </body>
 </html>
