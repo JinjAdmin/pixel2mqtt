@@ -707,7 +707,7 @@
     if (scr.bg) for (let i = 0; i < W * H; i++) fb.px.set(scr.bg, i * 3);
     for (const e of scr.elements) {
       if (e.hidden || (e.cond && !condEval(e.cond, ctx))) continue;
-      if (e.blink && phase(ctx.t, 500 / e.blink, 2)) continue;   // blink=<ms>: shown for ms, hidden for ms
+      if (e.blink && phase(ctx.t, 1000 / e.blink, 2)) continue;   // blink=<ms>: shown for ms, hidden for ms
       elDraw(fb, e, ctx);
     }
     return fb.px;
