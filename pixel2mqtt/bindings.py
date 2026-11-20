@@ -3,9 +3,9 @@
 data/bindings.json: {"displays": {<display id>: {"screens": {<screen name>: {<value name>: spec}}}}}
 spec: {"entity": "sensor.x", "kind": "state" | "attr" | "history", "attr": "...", "hours": 24, "points": 32}
 
-Values go to the display's `values` command (the same path as <topic>/values/set): flat JSON, at most 1 KB per
+Values go to the display's `values` command (the same path as <topic>/values/set): flat JSON, at most 8 KB per
 message, at most about one message per second per display. Everything is resent when a display (re)connects or
-Home Assistant reconnects. Sending a screen activates its bindings; deleting it drops the ones nothing else uses.
+Home Assistant reconnects, and every 10 minutes (pixeld's fresh()/stale/needs mean "recently sent"). Sending a screen activates its bindings; deleting it drops the ones nothing else uses.
 """
 import json
 import logging
@@ -14,7 +14,7 @@ import threading
 import time
 
 log = logging.getLogger("bindings")
-MAX_MSG = 1024
+MAX_MSG = 8192   # pixeld takes up to 16 KB per values message (HTTP and MQTT); stay well under
 UNSET = object()
 
 
@@ -65,7 +65,7 @@ def value_of(spec, st, history=None):
 
 
 def split_messages(values: dict):
-    """{name: value} -> JSON payloads of at most 1 KB each."""
+    """{name: value} -> JSON payloads of at most MAX_MSG bytes each."""
     out, cur = [], {}
     for k, v in values.items():
         trial = dict(cur, **{k: v})
@@ -94,6 +94,8 @@ class Bindings:
         self.pending = {}    # display id -> {name: value} waiting to go out
         self.hist = {}       # (entity, attr, hours, points) -> (fetched_at, list)
         self._stop = threading.Event()
+        self.resend_every = 600          # s: keep values fresh on the display even when nothing changes
+        self._full_at = {}               # display id -> time of the last full resend
 
     # ------------------------------------------------------------------ store
     def _save(self):
@@ -196,6 +198,7 @@ class Bindings:
     def resend_all(self, dev_id):
         with self.lock:
             self.sent[dev_id] = {}
+            self._full_at[dev_id] = time.time()
         self.refresh(dev_id, force=True)
 
     # ------------------------------------------------------------------ wiring
@@ -213,9 +216,13 @@ class Bindings:
             self.refresh(dev_id, only=lambda s: s["entity"] == entity_id and s.get("kind") != "history")
 
     def _history_loop(self):
-        while not self._stop.wait(30):
+        tick = min(30.0, self.resend_every / 2)
+        while not self._stop.wait(tick):
             for dev_id in list(self.data["displays"]):
-                self.refresh(dev_id, only=lambda s: s.get("kind") == "history")
+                if self.active(dev_id) and time.time() - self._full_at.get(dev_id, 0) >= self.resend_every:
+                    self.resend_all(dev_id)
+                else:
+                    self.refresh(dev_id, only=lambda s: s.get("kind") == "history")
 
     def _flush_loop(self):
         while not self._stop.wait(1.0):

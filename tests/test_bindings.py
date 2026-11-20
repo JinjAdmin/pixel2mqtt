@@ -1,4 +1,4 @@
-"""python -m tests.test_bindings - value bindings: conversion, 1 KB batching, throttling, resend and cleanup (no HA, no display)."""
+"""python -m tests.test_bindings - value bindings: conversion, batching, throttling, resend and cleanup (no HA, no display)."""
 import json
 import pathlib
 import sys
@@ -7,7 +7,9 @@ import time
 import types
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+import pixel2mqtt.bindings as bindings_mod  # noqa: E402
 from pixel2mqtt.bindings import Bindings, split_messages, value_of  # noqa: E402
+bindings_mod.MAX_MSG = 1024   # small batches, so splitting and throttling show up with a few values
 
 fails = 0
 
@@ -77,6 +79,13 @@ with tempfile.TemporaryDirectory() as tmp:
     time.sleep(1.3)
     gone = {k: v for _, m, _ in disp.sent[n:] for k, v in m.items()}
     ok("removing a screen deletes its values (null)", gone and all(v is None for v in gone.values()) and "printer.status" not in gone, list(gone)[:3])
+    n = len(disp.sent)
+    b.resend_every = 2                       # the periodic resend (10 minutes in real use)
+    b._stop.set(); b._stop = __import__("threading").Event()
+    b.start()
+    time.sleep(3.6)
+    again = {k for _, m, _ in disp.sent[n:] for k in m}
+    ok("all values are resent periodically", {"printer.progress", "printer.status"} <= again, sorted(again)[:4])
     b.stop()
 
 print(f"\n{fails} FAILED" if fails else "\nALL PASSED")
