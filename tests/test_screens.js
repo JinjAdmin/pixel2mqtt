@@ -58,6 +58,9 @@ ok("trend", fmt("{ser.trend}") === "4");
 ok("unknown formatter is reported", R.formatText("{x|bogus}", ctx).errors.length === 1);
 ok("errors keep the rest", (() => { const s = R.parse('PXS1\ntext 0 0 font=medium "x"\npixel 1 1', "e", ctx); return s.errors[0].line === 2 && /font/.test(s.errors[0].msg) && s.elements.length === 2; })());
 ok("visibility: needs + show", R.visibility(scr, ctx).show && !R.visibility(scr, Object.assign({}, ctx, { values: {} })).show);
+ok("blink= as pixeld: hidden while phase(t, 500/ms, 2) is 1", (() => { const s = R.parse('PXS1\npixel 0 0 blink=500', "b"); return R.render(s, { now: 100, t: 100.2 })[0] === 255 && R.render(s, { now: 100, t: 101.2 })[0] === 0; })());
+ok("blink out of range is reported", R.parse('PXS1\npixel 0 0 blink=10', "b").errors[0].msg === "blink must be 50..10000 ms");
+ok("icon name from a template", (() => { const v = {}; R.setValue(v, "ticker.symbol", "BTC", 1); const s = R.parse('PXS1\nicon 0 0 "@coin:{ticker.symbol}"', "c"); return R.render(s, { values: v, now: 1 })[(4 * 52 + 0) * 3] === 247; })());
 ok("text widths", R.textWidth("42", "small") === 11 && R.textWidth("42", "tiny") === 7 && R.textWidth("42", "big") === 22);
 
 function png(file, fb) {

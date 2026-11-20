@@ -30,6 +30,7 @@ ok("attribute number", value_of({"kind": "attr", "attr": "temperature"}, {"s": "
 ok("attribute bool", value_of({"kind": "attr", "attr": "x"}, {"s": "", "a": {"x": True}}) == 1)
 ok("attribute list of numbers", value_of({"kind": "attr", "attr": "p"}, {"s": "", "a": {"p": list(range(100))}}) == list(range(36, 100)))
 ok("history list", value_of({"kind": "history"}, None, [1, 2, 3]) == [1, 2, 3])
+ok("fixed values", value_of({"kind": "const", "value": "BTC"}, None) == "BTC" and value_of({"kind": "const", "value": "42"}, None) == 42)
 
 # --- batching
 big = {f"value.{i:02d}": "x" * 60 for i in range(40)}

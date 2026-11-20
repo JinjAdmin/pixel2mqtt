@@ -52,7 +52,7 @@ const Screens = (() => {
   }
   function elementLine(e) {
     const o = [];
-    const common = () => { const c = colorOpt(e.color || { base: "#ffffff" }), s = condText(e.show || []); if (c) o.push(c); if (s) o.push(opt("if", s)); };
+    const common = () => { const c = colorOpt(e.color || { base: "#ffffff" }), s = condText(e.show || []); if (c) o.push(c); if (s) o.push(opt("if", s)); if (+e.blink) o.push("blink=" + e.blink); };
     switch (e.type) {
       case "text":
         o.push("text", e.x, e.y);
@@ -69,7 +69,7 @@ const Screens = (() => {
       case "icon":
         o.push("icon", e.x, e.y);
         if (e.byValue) { o.push("value=" + (e.value || "x")); o.push(opt("map", e.map.filter(m => m.k && m.icon).map(m => `${m.k}:${m.icon}`).join(","))); }
-        else { o.push(e.icon || "@degree"); if (e.frame) { o.push("frame=" + e.frame); if (e.range && e.range !== "0,100") o.push("range=" + e.range); } }
+        else { o.push(/[\s"{]/.test(e.icon || "") ? q(e.icon) : (e.icon || "@degree")); if (e.frame) { o.push("frame=" + e.frame); if (e.range && e.range !== "0,100") o.push("range=" + e.range); } }
         common(); break;
       case "bar":
         o.push("bar", e.x, e.y, e.w, e.h, "value=" + (e.value || "x"));
@@ -115,7 +115,8 @@ const Screens = (() => {
     const conds = rows => (rows || []).forEach(r => add(r.name));
     for (const e of d.elements) {
       conds(e.show); (e.color && e.color.rules || []).forEach(r => add(r.name));
-      if (e.type === "text") for (const m of (e.text || "").matchAll(/\{([a-z0-9_.-]+)/g)) add(m[1]);
+      const tpl = e.type === "text" ? e.text : e.type === "icon" && !e.byValue ? e.icon : "";   // icon names can be templates too
+      for (const m of (tpl || "").matchAll(/\{([a-z0-9_.-]+)/g)) add(m[1]);
       ["value", "series", "frame"].forEach(k => e[k] && add(e[k]));
     }
     conds(d.settings.show); conds(d.settings.linger); (d.settings.needs || []).forEach(add);
@@ -167,7 +168,7 @@ const Screens = (() => {
       else if (kw === "bg") s.bg = nums[0] || "#000000";
       else if (DEFAULTS[kw]) {
         const e = newElement(kw === "icon" && o.map ? "iconmap" : kw);
-        e.color = colorFromOpt(o.color); e.show = rowsFromCond(o.if);
+        e.color = colorFromOpt(o.color); e.show = rowsFromCond(o.if); e.blink = o.blink ? +o.blink : 0;
         const n = nums.map(Number);
         if (kw === "text") {
           Object.assign(e, { x: n[0], y: n[1], text: (rest.find(t => t.q && !t.k) || { v: "" }).v, font: o.font || "small", align: o.align || "left",
@@ -176,7 +177,7 @@ const Screens = (() => {
         } else if (kw === "icon") {
           Object.assign(e, { x: n[0], y: n[1] });
           if (o.map) { e.value = o.value || ""; e.map = o.map.split(",").map(p => { const k = p.indexOf(":"); return { k: p.slice(0, k), icon: p.slice(k + 1) }; }); }
-          else Object.assign(e, { icon: nums[2] || "", frame: o.frame || "", range: o.range || "0,100" });
+          else Object.assign(e, { icon: nums[2] || (rest.find(t => t.q && !t.k) || { v: "" }).v, frame: o.frame || "", range: o.range || "0,100" });
         } else if (kw === "bar") {
           const [a, b] = (o.fill || "").split("..");
           Object.assign(e, { x: n[0], y: n[1], w: n.length > 2 ? n[2] : +o.w, h: n.length > 3 ? n[3] : +o.h, value: o.value || "", min: +(o.min || 0), max: +(o.max || 100),
@@ -690,6 +691,7 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
         kids.push(el("button", { cls: "small", onclick: () => { edit(() => e.map.splice(e.map.length - 1, 0, { k: "", icon: "" })); renderInspector(); } }, "+ Add"));
       } else {
         kids.push(field("Icon", iconSel(e, "icon"), lib.icons.length ? "" : "Adopt a display to use its icon library; @ icons are drawn built-ins."),
+          field("…or a name from values", txt(e, "icon", { placeholder: "@coin:{ticker.symbol}" }), "a template, e.g. @coin:{ticker.symbol}"),
           field("Frame from value", valueField(e, "frame", "bar"), "optional: picks the frame instead of playing it (a progress icon)"),
           e.frame ? field("Range", txt(e, "range", { placeholder: "0,100" })) : "");
       }
@@ -705,6 +707,7 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
     if (e.type !== "bar") kids.push(el("div", { cls: "tp-label" }, "Colour"), colorRules(e));
     else kids.push(el("div", { cls: "tp-label" }, "Colour (when no fill is set)"), colorRules(e));
     kids.push(el("div", { cls: "tp-label" }, "Show when"), condBuilder(e.show || (e.show = []), "Show only when…"));
+    kids.push(el("div", { cls: "row wrap" }, field("Blink (ms on / ms off)", num(e, "blink", { placeholder: "off" }), "50 to 10000; empty or 0 = steady")));
     const errs = errorsFor(e);
     if (errs.length) kids.push(el("div", { cls: "scr-errors" }, ...errs.map(t => el("div", { cls: "err small" }, "⚠ " + t))));
     kids.push(el("div", { cls: "row" }, el("button", { onclick: () => { const c = JSON.parse(JSON.stringify(e)); c.id = uid(); c.x += 2; c.y += 2; if (c.type === "line") { c.x2 += 2; c.y2 += 2; } edit(() => doc().elements.push(c)); selId = c.id; renderAll(); } }, "Duplicate"),
@@ -752,7 +755,7 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
       const b = d.bindings[n], used = names.includes(n), v = mode === "live" && n in live ? live[n] : sampleValue(d.samples[n]);
       const sample = el("input", { type: "text", value: d.samples[n] === undefined ? "" : String(d.samples[n]), placeholder: "sample", spellcheck: "false", title: "Sample value: 42, 48.2 °F, running, 1,2,3 (a list), or null" });
       sample.addEventListener("change", () => { edit(() => { if (sample.value === "") delete d.samples[n]; else d.samples[n] = sample.value; }); renderValuesPane(); });
-      const what = b ? `${b.entity}${b.kind === "attr" ? " · " + b.attr : b.kind === "history" ? ` · history ${b.hours} h / ${b.points} pts` : ""}` : "not bound";
+      const what = !b ? "not bound" : b.kind === "const" ? `fixed: ${b.value}` : `${b.entity}${b.kind === "attr" ? " · " + b.attr : b.kind === "history" ? ` · history ${b.hours} h / ${b.points} pts` : ""}`;
       const shown = v === undefined ? "–" : Array.isArray(v) && v.length === 2 && typeof v[1] === "string" ? `${v[0]} ${v[1]}` : Array.isArray(v) ? `[${v.length} points]` : String(v);
       return el("div", { cls: "valrow" + (used ? "" : " unused") },
         el("div", { cls: "vtop" }, el("button", { cls: "vname", title: "Rename (updates every element that uses it)", onclick: () => renameValue(n) }, n),
@@ -760,6 +763,7 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
         el("div", { cls: "muted small vwhat", title: what }, what),
         el("div", { cls: "row" }, sample,
           el("button", { title: b ? "Bind to a different entity" : "Bind to an entity", onclick: () => pickEntity({ for: "text", name: n, onPick: () => renderValuesPane() }) }, b ? "⇄ Rebind" : "⌕ Bind"),
+          el("button", { title: "A fixed value the display always gets, e.g. BTC (no Home Assistant needed)", onclick: () => fixedValue(n) }, "= Fixed"),
           b ? el("button", { title: "Unbind", onclick: () => { edit(() => { delete d.bindings[n]; }); renderValuesPane(); } }, "✕") : ""));
     });
     const auto = !ha.available && names.length ? el("details", {}, el("summary", {}, "Example automation (publish the values yourself)"),
@@ -771,6 +775,13 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
     const d = display(), topic = d ? d.topic : "pixel2mqtt/display";
     return `automation:\n  - alias: Send screen values to the pixel display\n    triggers:\n${names.map(n => `      - trigger: state\n        entity_id: sensor.REPLACE_ME   # -> ${n}`).join("\n")}\n` +
       `    actions:\n      - action: mqtt.publish\n        data:\n          topic: ${topic}/values/set\n          payload: >-\n            {${names.map(n => `"${n}": {{ states('sensor.REPLACE_ME') | tojson }}`).join(", ")}}\n`;
+  }
+  async function fixedValue(n) {
+    const b = doc().bindings[n];
+    const v = await askText(`Fixed value for ${n} (sent to the display as is; numbers stay numbers)`, b && b.kind === "const" ? b.value : (doc().samples[n] || ""), { ok: "Set" });
+    if (v === null) return;
+    edit(() => { doc().bindings[n] = { kind: "const", value: v }; doc().samples[n] = v; });
+    renderValuesPane();
   }
   async function renameValue(n) {
     const v = await askText("Value name (a-z, 0-9, _ . -; up to 31 characters)", n, { ok: "Rename" }); if (!v) return;

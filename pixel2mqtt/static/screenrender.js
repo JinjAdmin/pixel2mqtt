@@ -469,7 +469,7 @@
       }
       return vs;
     }
-    return e.icon ? cut(e.icon, 63) : "";
+    return e.icon ? (e.icon.includes("{") ? cut(tmplEval(e.icon, ctx), 63) : cut(e.icon, 63)) : "";   // "@coin:{ticker.symbol}"
   }
   function elDraw(fb, e, ctx) {
     const c = colorEval(e.color, WHITE, ctx), t = ctx.t;
@@ -602,7 +602,7 @@
     if (type < 0) return scrError(scr, ln, `unknown keyword '${kw.slice(0, 20)}'`);
     if (scr.elements.length >= NEL) return scrError(scr, ln, `too many elements (max ${NEL})`);
     const e = { type: kw, line: ln, x: 0, y: 0, w: 0, h: 0, x2: 0, y2: 0, font: 1, align: 0, valign: 0, ovf: 0, spacing: 0, fillrect: false, area: false, dot: false, pulse: false,
-      dir: 0, speed: 0, vmin: 0, vmax: 100, text: null, cond: null, color: null, icon: null, value: null, map: null, frame: null, fill: null, bg: null, series: null };
+      dir: 0, blink: 0, speed: 0, vmin: 0, vmax: 100, text: null, cond: null, color: null, icon: null, value: null, map: null, frame: null, fill: null, bg: null, series: null };
     const pos = []; let i = 0;
     while (pos.length < NMAX[type]) {
       const t = nextTok(rest, i);
@@ -651,6 +651,7 @@
         case "pulse": e.pulse = atoi(v) !== 0; break;
         case "area": e.area = atoi(v) !== 0; break;
         case "dot": e.dot = atoi(v) !== 0; break;
+        case "blink": e.blink = atoi(v); if (e.blink < 50 || e.blink > 10000) { scrError(scr, ln, "blink must be 50..10000 ms"); e.blink = 0; } break;
         default: scrError(scr, ln, `${kw}: unknown option '${k.slice(0, 16)}'`);
       }
     }
@@ -704,7 +705,11 @@
   function render(scr, ctx0) {
     const ctx = newCtx(ctx0, scr), fb = makeFb();
     if (scr.bg) for (let i = 0; i < W * H; i++) fb.px.set(scr.bg, i * 3);
-    for (const e of scr.elements) { if (e.hidden || (e.cond && !condEval(e.cond, ctx))) continue; elDraw(fb, e, ctx); }
+    for (const e of scr.elements) {
+      if (e.hidden || (e.cond && !condEval(e.cond, ctx))) continue;
+      if (e.blink && phase(ctx.t, 500 / e.blink, 2)) continue;   // blink=<ms>: shown for ms, hidden for ms
+      elDraw(fb, e, ctx);
+    }
     return fb.px;
   }
   // what pixeld's rotation would do: needs (present and fresh), show, linger

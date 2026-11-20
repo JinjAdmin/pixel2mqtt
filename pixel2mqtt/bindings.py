@@ -38,6 +38,10 @@ def _num(v):
 def value_of(spec, st, history=None):
     """One binding's value in the display's format (number, string, [number, unit], list of numbers, or None)."""
     kind = spec.get("kind", "state")
+    if kind == "const":   # a fixed value (e.g. a ticker symbol)
+        v = spec.get("value")
+        n = _num(v) if isinstance(v, str) and v.strip() else None
+        return n if n is not None else (_trunc(str(v)) if v not in (None, "") else None)
     if kind == "history":
         return list(history)[-64:] if history else None
     if st is None:
@@ -116,7 +120,12 @@ class Bindings:
     def activate(self, dev_id, screen, bindings: dict):
         clean = {}
         for name, spec in (bindings or {}).items():
-            if not isinstance(spec, dict) or not spec.get("entity"):
+            if not isinstance(spec, dict):
+                continue
+            if spec.get("kind") == "const":
+                clean[name] = {"kind": "const", "value": str(spec.get("value", ""))[:63]}
+                continue
+            if not spec.get("entity"):
                 continue
             s = {"entity": str(spec["entity"]), "kind": spec.get("kind", "state")}
             if s["kind"] == "attr":
@@ -176,16 +185,16 @@ class Bindings:
     def compute(self, spec, fresh_history=False):
         if spec.get("kind") == "history":
             return value_of(spec, None, self._history(spec, 0 if fresh_history else self._hist_period(spec)))
-        return value_of(spec, self.ha.states.get(spec["entity"]))
+        return value_of(spec, self.ha.states.get(spec.get("entity", "")))
 
     def preview(self, bindings: dict):
         """{name: spec} -> {name: value} now (the editor's Live preview)."""
-        return {n: self.compute(s) for n, s in bindings.items() if isinstance(s, dict) and s.get("entity")}
+        return {n: self.compute(s) for n, s in bindings.items() if isinstance(s, dict) and (s.get("entity") or s.get("kind") == "const")}
 
     def refresh(self, dev_id, force=False, only=None):
         """Recompute the display's values; queue the ones that changed (or all of them with force)."""
-        if not self.ha.connected:
-            return
+        if not self.ha.connected and not all(s.get("kind") == "const" for s in self.active(dev_id).values()):
+            return   # without HA only fixed values can be computed; wait (an HA reconnect resends everything)
         with self.lock:
             sent, p = self.sent.setdefault(dev_id, {}), self.pending.setdefault(dev_id, {})
             for name, spec in self.active(dev_id).items():
@@ -213,7 +222,7 @@ class Bindings:
 
     def _on_state(self, entity_id, _st):
         for dev_id in list(self.data["displays"]):
-            self.refresh(dev_id, only=lambda s: s["entity"] == entity_id and s.get("kind") != "history")
+            self.refresh(dev_id, only=lambda s: s.get("entity") == entity_id and s.get("kind") not in ("history", "const"))
 
     def _history_loop(self):
         tick = min(30.0, self.resend_every / 2)
