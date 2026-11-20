@@ -1,5 +1,6 @@
 {
   "ticker.symbol": "BTC",
+  "ticker.crypto": 1,
   "ticker.prefix": "$",
   "ticker.price": 61764.2,
   "ticker.change": 1.25,

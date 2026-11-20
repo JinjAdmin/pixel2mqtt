@@ -7,11 +7,11 @@ needs  ticker.symbol ticker.price
 stale  1d
 order  60
 
-# Coin badges (drawn, no artwork) for BTC and ETH; other symbols start at x=1
-icon 1 1 @coin:BTC if=ticker.symbol==BTC
-icon 1 1 @coin:ETH if=ticker.symbol==ETH
-text 12 2 font=small color=#ffffff "{ticker.symbol|upper}" if=ticker.symbol==BTC||ticker.symbol==ETH
-text 1 2 font=small color=#ffffff "{ticker.symbol|upper}" if=ticker.symbol!=BTC&&ticker.symbol!=ETH
+# Coin badge (drawn, no artwork) when ticker.crypto is set: BTC and ETH have their own, any other symbol gets a
+# gold coin with its first letter. Stocks start the symbol at x=1.
+icon 1 1 "@coin:{ticker.symbol}" if=ticker.crypto
+text 12 2 font=small color=#ffffff "{ticker.symbol|upper}" if=ticker.crypto
+text 1 2 font=small color=#ffffff "{ticker.symbol|upper}" if=!ticker.crypto
 
 # Change, top right, coloured by direction
 text 28 3 w=24 align=right font=tiny color="ticker.change>0:#28dc50;ticker.change<0:#ff3c3c;#b4b4b4" "{ticker.change|pct|sign}"
