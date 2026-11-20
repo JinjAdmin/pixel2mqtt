@@ -133,6 +133,7 @@ class Display:
                 self.forward(d["msgs"])
                 self.set_online(True)
                 self._need_disc.clear()
+                self.mgr.display_ready(self)   # (re)connected or rebooted: its RAM-only screen values need resending
                 try:
                     self.storage = self.api.storage()
                 except (OSError, APIError):
@@ -181,7 +182,12 @@ class Manager:
         self.bridge_state_topic = self.base + "/bridge/state"
         self.displays = {}
         self.found = {}        # ip -> info from the last scan
+        self.bindings = None   # screen value bindings (set by __main__)
         self.lock = threading.Lock()
+
+    def display_ready(self, d):
+        if self.bindings:
+            self.bindings.resend_all(d.id)
 
     def owns_mqtt(self):
         return bool(self.mqtt and self.mqtt.connected)
@@ -283,6 +289,8 @@ class Manager:
             except (OSError, APIError):
                 pass
         self.store.delete_device(dev_id)
+        if self.bindings:
+            self.bindings.forget_display(dev_id)
 
     def scan(self):
         from .device import scan

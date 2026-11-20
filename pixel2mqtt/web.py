@@ -16,7 +16,7 @@ from .device import FRAME_BYTES, APIError, send_frame
 log = logging.getLogger("web")
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
 DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs"   # the editor guide (repo docs/, /app/docs in the image)
-KINDS = ("anims", "icons", "sounds")
+KINDS = ("anims", "icons", "sounds", "screens")
 MAX_UPLOAD = 48 << 20
 
 
@@ -196,14 +196,64 @@ def make_handler(mgr, config):
                     return self.send(200, {"ok": True})
             if p == ["layer-frames"] and m == "POST":  # image/GIF -> frames for a new editor layer
                 return self.send(200, {"frames": scenes.decode_layer_frames(self.body(), int(q.get("max", 256)))})
+            if p[:1] == ["ha"]:
+                return self.ha_api(m, p[1:], q)
             if p[:1] == ["jobs"] and len(p) == 2:
                 return self.send(200, jobs.jobs[p[1]])
             if p[:1] == ["displays"] and len(p) >= 2:
                 return self.display_api(m, self.display(p[1]), p[2:], q)
             raise KeyError("unknown endpoint")
 
+        def ha_api(self, m, p, q):
+            ha, b = mgr.ha, mgr.bindings
+            if p == ["status"]:
+                return self.send(200, ha.status())
+            if not ha.available:
+                raise ValueError("no Home Assistant access (add-on: automatic; Docker: set HA_URL and HA_TOKEN_FILE)")
+            if p == ["registry"]:
+                if not ha.connected:
+                    raise ValueError("not connected to Home Assistant" + (f": {ha.error}" if ha.error else ""))
+                return self.send(200, ha.registry())
+            if p == ["state"]:
+                st = ha.state(q.get("entity", ""))
+                if st is None:
+                    raise KeyError("unknown entity")
+                return self.send(200, st)
+            if p == ["history"]:
+                return self.send(200, ha.history(q["entity"], float(q.get("hours", 24)), int(q.get("points", 32)), q.get("attr") or None))
+            if p == ["values"] and m == "POST":   # {bindings: {name: spec}} -> {name: value} (Live preview)
+                return self.send(200, b.preview(self.jbody().get("bindings") or {}))
+            raise KeyError("unknown endpoint")
+
         def display_api(self, m, d, p, q):
             api = d.api
+            if p == ["screens"] and m == "GET":   # what the display reports: errors, visibility, missing values
+                return self.send(200, api.screens())
+            if p == ["bindings"] and m == "GET":
+                return self.send(200, {"screens": mgr.bindings.screens(d.id), "ha": mgr.ha.status()})
+            if p[:1] == ["screens"] and len(p) == 2:
+                name = formats.safe_name(p[1])
+                if not name:
+                    raise ValueError("bad screen name")
+                if m == "PUT":   # {scr: "PXS1...", bindings: {...}}: upload the layout and turn its bindings on
+                    b = self.jbody()
+                    scr = (b.get("scr") or "").encode("utf-8")
+                    if not scr.startswith(b"PXS1"):
+                        raise ValueError("not a screen (.scr must start with PXS1)")
+                    if len(scr) > 16384:
+                        raise ValueError("screen file larger than 16 KB")
+                    api.put_file("screens", name + ".scr", scr)
+                    mgr.bindings.activate(d.id, name, b.get("bindings") or {})
+                    log.info("sent screen %s (%d bytes, %d bindings) to %s", name, len(scr), len(b.get("bindings") or {}), d.name)
+                    return self.send(200, {"ok": True, "name": name})
+                if m == "DELETE":
+                    try:
+                        api.delete_file("screens", name + ".scr")
+                    except APIError as e:
+                        if e.status != 404:
+                            raise
+                    mgr.bindings.deactivate(d.id, name)
+                    return self.send(200, {"ok": True})
             if not p and m == "DELETE":
                 mgr.remove(d.id)
                 return self.send(200, {"ok": True})

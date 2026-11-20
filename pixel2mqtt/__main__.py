@@ -6,7 +6,9 @@ import threading
 import uuid
 
 from . import __version__
+from .bindings import Bindings
 from .bridge import Manager
+from .ha import HomeAssistant
 from .config import Config, Store
 from .mqtt import MQTTClient
 from .web import serve
@@ -20,6 +22,9 @@ def main():
     log.info("pixel2mqtt %s - %s", __version__, cfg.describe())
     store = Store(cfg.data_dir)
     mgr = Manager(cfg, store)
+    mgr.ha = HomeAssistant(cfg)
+    mgr.bindings = Bindings(cfg.data_dir, mgr, mgr.ha)
+    log.info("Home Assistant access: %s", mgr.ha.mode if mgr.ha.available else "none" + (f" ({mgr.ha.error})" if mgr.ha.error else ""))
     mqtt = None
     if cfg.mqtt_host:
         mqtt = MQTTClient(cfg.mqtt_host, cfg.mqtt_port, cfg.mqtt_user, cfg.mqtt_password, client_id=cfg.mqtt_client_id or f"{cfg.base}-{uuid.uuid4().hex[:8]}",  # random by default, like zigbee2mqtt
@@ -27,6 +32,8 @@ def main():
     else:
         log.warning("MQTT_HOST not set: running as editor only (no Home Assistant bridge)")
     mgr.start(mqtt)
+    mgr.bindings.start()
+    mgr.ha.start()
     if mqtt:
         mqtt.start()
     stop = threading.Event()
@@ -37,6 +44,8 @@ def main():
     while not stop.wait(1):  # short waits so Ctrl+C is handled on Windows too
         pass
     log.info("stopping")
+    mgr.bindings.stop()
+    mgr.ha.stop()
     mgr.shutdown()
     if mqtt:
         mqtt.stop()

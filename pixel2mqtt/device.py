@@ -104,6 +104,10 @@ class PixelAPI:
                 pass
         return data
 
+    def screens(self):
+        """Info screens on the display with their errors, visibility and missing values (GET /api/screens)."""
+        return self.json("GET", "/api/screens")
+
     def frame(self) -> bytes:
         return self.request("GET", "/api/frame")
 
