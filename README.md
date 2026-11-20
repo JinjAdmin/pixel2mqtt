@@ -12,6 +12,8 @@ broker and Home Assistant for any number of displays. You get:
   - **remove duplicates**: identical animations collapse to one, keeping a real name over an `App …` copy;
   - a **layered animation editor** (see below);
   - draw new icons, including animated ones, and add them to the icon library;
+  - design **info screens**: text, values from Home Assistant, icons, progress bars and sparklines, laid out on the
+    panel and kept up to date by pixel2mqtt (needs pixeld-h6631 with screen support);
   - see each display's free storage;
   - with **Live on display**, the real panel shows the canvas at about 30 fps while you edit.
 - **Built-in artwork import.** One button converts the animations and icons that ship inside the display's own
@@ -23,7 +25,7 @@ broker and Home Assistant for any number of displays. You get:
   Copies of built-ins are skipped. (Needs pixeld-h6631 v0.2.0 or newer.)
   *pixel2mqtt contains no artwork.* It reads the files from your own display and writes the results back to it.
 
-**New to the editor?** See the [editor guide](docs/GUIDE.md) for projects, tools, layers, frames and icons.
+**New to the editor?** See the [editor guide](docs/GUIDE.md) for projects, tools, layers, frames, icons and screens.
 
 ### Screenshots
 **Editor**: layers, frames, motion and opacity, with the colour palette and scene controls on the right.
@@ -108,6 +110,8 @@ services:
       # --- Home Assistant ---
       # PIXEL2MQTT_BASE: pixel2mqtt     # base topic
       # HA_DISCOVERY_PREFIX: homeassistant
+      # HA_URL: http://homeassistant.local:8123      # for info screen values (the add-on needs neither)
+      # HA_TOKEN_FILE: /run/secrets/ha_token         # a long-lived access token, in a file
       # --- displays ---
       # PIXEL_HOSTS: 192.168.1.50,192.168.1.51   # probe these directly (needed without host networking)
       # SCAN_INTERVAL: 120              # seconds between network scans
@@ -164,6 +168,8 @@ The topics are pixeld's own, with the base replaced by the display's topic. Some
 | `<topic>/notify/set` | text, or JSON `{"message","duration","color","sound","animation"}` |
 | `<topic>/weather/set`, `climate/set`, `stock/set`, `score/set` | JSON for the info screens |
 | `<topic>/chime/set` | a sound name, optionally with a volume |
+| `<topic>/values/set` | JSON `{"name": value, ...}` for info screens (pixel2mqtt sends bound values itself) |
+| `<topic>/screen/set` | `Auto`, or an info screen's name to pin it |
 | `<topic>/status` | `online` / `offline` (pixel2mqtt sets this) |
 | `pixel2mqtt/bridge/state` | `online` / `offline` (last will) |
 
@@ -181,6 +187,7 @@ These are environment variables. `.env` in the working directory and `data/.env`
 | `MQTT_CLIENT_ID` | random (`pixel2mqtt-xxxxxxxx`) | Fixed id, e.g. for broker ACLs or logs. Must be unique per instance |
 | `PIXEL2MQTT_BASE` | `pixel2mqtt` | Base topic |
 | `HA_DISCOVERY_PREFIX` | `homeassistant` | |
+| `HA_URL`, `HA_TOKEN_FILE` | – | Home Assistant's address and a file holding a long-lived access token. Used by the screen editor (entity picker, live values) and to send bound values to the displays. The HA OS add-on connects by itself. |
 | `WEB_PORT` / `WEB_HOST` | `8466` / `0.0.0.0` | |
 | `PIXEL_HOSTS` | – | Comma-separated display IPs (`ip` or `ip:port`) to probe directly |
 | `SCAN_INTERVAL` | `120` | Seconds between network scans. Scans also follow DHCP address changes. |
@@ -204,7 +211,9 @@ through a reverse proxy without adding authentication there.
   - sounds are stored as they are, and the display decodes them on first play.
 
 ## Tests
-`python tests/test_offline.py` and `node tests/test_scene.js` need nothing else and run in CI.
+`python tests/test_offline.py`, `python -m tests.test_bindings`, `node tests/test_scene.js` and
+`node tests/test_screens.js` need nothing else and run in CI. `test_screens.js` also checks the screen renderer pixel
+for pixel against pixeld's golden frames when a pixeld-h6631 checkout sits next to this one.
 `tests/verify_stock_scenes.py <copy of /usr/res>` (local, needs the stock files) checks that every built-in animation
 opened as layers bakes byte-identically.
 `tests/run_pixeld_host.sh <pixeld-h6631 checkout> [<copy of a display's /usr/res>]` builds pixeld for x86-64

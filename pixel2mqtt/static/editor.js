@@ -1040,9 +1040,10 @@ const Editor = (() => {
     if (!fromExample) return Screens.create(uniqueName("Untitled screen", lower(projects.map(p => p.name))));
     try {
       const scr = await (await fetch(`examples/screens/${enc(fromExample.file)}`)).text();
-      let samples = null;
+      let samples = null, notes = "";
       if (fromExample.values) { try { samples = await (await fetch(`examples/screens/${enc(fromExample.values)}`)).json(); } catch (e) { samples = null; } }
-      Screens.create(uniqueName(fromExample.name, lower(projects.map(p => p.name))), scr, samples);
+      if (fromExample.notes) { try { notes = await (await fetch(`examples/screens/${enc(fromExample.notes)}`)).text(); } catch (e) { notes = ""; } }
+      Screens.create(uniqueName(fromExample.name, lower(projects.map(p => p.name))), scr, samples, notes);
     } catch (e) { toast(e.message, true); showHome(true); }
   }
   function showProjects() { proj.open = false; showHome(true); refreshOpenList(); }

@@ -1,0 +1,6 @@
+[
+  {"name": "Today", "file": "Today.scr", "values": "Today.values.json", "notes": "Today.bindings.md"},
+  {"name": "Forecast", "file": "Forecast.scr", "values": "Forecast.values.json", "notes": "Forecast.bindings.md"},
+  {"name": "3D printer", "file": "3D printer.scr", "values": "3D printer.values.json", "notes": "3D printer.bindings.md"},
+  {"name": "Ticker", "file": "Ticker.scr", "values": "Ticker.values.json", "notes": "Ticker.bindings.md"}
+]

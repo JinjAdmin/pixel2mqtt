@@ -1,6 +1,6 @@
 # Editor guide
 
-This guide covers how to use the pixel2mqtt editor to make animations and icons for the 52×32 display. To install pixel2mqtt, see the [README](../README.md). Inside pixel2mqtt, the **?** button at the top right opens this guide in a side drawer.
+This guide covers how to use the pixel2mqtt editor to make animations, icons and info screens for the 52×32 display. To install pixel2mqtt, see the [README](../README.md). Inside pixel2mqtt, the **?** button at the top right opens this guide in a side drawer.
 
 All the screenshots come from one example project, **Ringworld**: a close-up of a vast ring-shaped world turning in front of its gas giant, with a dropship heading in, in the spirit of a certain classic sci-fi game menu. The last section walks through how each of its nine layers was made, and between them they use almost every feature of the editor.
 
@@ -149,6 +149,43 @@ Hover the hint for each layer's breakdown. In Ringworld, everything is built aro
 An icon project is a single small image (8×8 to 32×32, or any size up to 52×32 with **custom…**) for info screens and notifications. Icons can have several frames and a transparent background. Animation-only controls such as motion, blink and the live preview are hidden. To change the size later, use **⋮ → Change icon size…**. Layers keep their pixels; nothing is stretched.
 
 ![Changing an icon's size](guide/dialog-iconsize.png)
+
+## Screens
+
+A **screen** is an info screen for the display's Info rotation: text, values from Home Assistant, icons, progress
+bars, sparklines and shapes, laid out on the 52×32 panel. The display keeps them up to date: pixel2mqtt sends the
+values whenever they change in Home Assistant. Screens need a display running pixeld-h6631 with screen support.
+
+Start one with **+ New screen**, or **From example…** (Today, Forecast, 3D printer and Ticker) on the Projects page.
+
+- **Add** an element from the left: **Text**, **Value** (a text that opens the entity picker straight away),
+  **Icon**, **Icon by value** (a different icon for each state, e.g. the weather), **Progress bar**, **Sparkline**,
+  **Rectangle** or **Line**. Click to add it, or drag it onto the canvas.
+- On the canvas, **click** to select, **drag** to move (it snaps to the panel's centre lines and to other elements'
+  edges; hold Alt to place it freely) and drag the white handles to resize. Arrow keys nudge by 1 pixel, Shift +
+  arrows by 5, Delete removes it, Ctrl+Z undoes.
+- **Elements** (left) lists them in drawing order, top = drawn last. Drag to reorder, 👁 hides one while editing
+  (it's still sent), 🔒 stops it moving. ⚠ marks a problem: hover for details.
+- The **Element** tab sets position and size, the **font** (Tiny 3×5, Small 5×7, Big 10×14, Huge 15×21: the panel
+  has no sizes in between), alignment within the box, what happens when the text is too wide (clip, scroll or
+  shrink), the colour, **colour rules** (e.g. green when a price is up) and **Show when** (e.g. only while printing).
+- Text is a **template**: `{printer.progress|int}%` shows a value run through formatters. **+ Insert value** picks
+  one, and the chips add formatters: Integer, Decimals, Thousands, %, Duration, Temperature, Time, Ago, Upper and
+  Fallback. The result shows underneath as you type.
+- **Values** lists every value the screen uses. **Bind** connects one to a Home Assistant entity: its state, one of
+  its attributes, or its **history** (for sparklines). The entity picker searches names, ids, devices, areas and
+  integrations (words in any order), or browses Area → Device → Entity. Each value also has a **sample**, so you can
+  try states like `finish` without waiting for a real print. **Sample / Live** at the top switches the preview
+  between samples and Home Assistant's live values.
+- **Screen** holds the screen's settings: its name in Home Assistant's *Screen* select, the values it **needs**
+  before it shows, **Show when**, **Keep showing after** (e.g. 30 minutes after a print finishes), when values count
+  as stale, time on screen, order in the rotation and background. **.scr** shows the file that gets sent.
+- **Send to display** uploads the screen and starts sending its bound values (batched, about once a second, and
+  again whenever the display restarts). **Remove from display** takes it off and stops its values.
+
+Home Assistant access is automatic in the add-on. In Docker, set `HA_URL` and `HA_TOKEN_FILE` (see the README).
+Without it, values are plain names: publish them yourself to `<topic>/values/set`, and the Values tab shows an
+example automation.
 
 ## Testing on the display
 

@@ -5,7 +5,8 @@
 const Screens = (() => {
   const R = ScreenRender, S = 16;               // canvas cell size (px)
   const BUILTIN = new Set(["time", "date", "weekday", "month", "day", "hour", "minute", "second"]);
-  const OPS = ["==", "!=", "<", ">", "<=", ">=", "in", "has", "fresh"];
+  const OPS = ["==", "!=", "<", ">", "<=", ">=", "in", "set", "has", "fresh"];
+  const OP_LABEL = { set: "is set", has: "has a value", fresh: "is fresh" };   // set: a bare name (exists and isn't 0/off/false/empty)
   const FONT_LABEL = { tiny: "Tiny 3×5", small: "Small 5×7", big: "Big 10×14", huge: "Huge 15×21" };
   const KIND_CHIPS = [["num", "Number"], ["text", "Text/state"], ["onoff", "On/off"], ["weather", "Weather"], ["hist", "Has history"]];
   const root = $("#screenMain");
@@ -41,13 +42,13 @@ const Screens = (() => {
 
   /* ================================================================ compile (project -> .scr) */
   const q = s => '"' + String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
-  const atom = r => r.op === "has" || r.op === "fresh" ? `${r.op}(${r.name})` : r.op === "in" ? `${r.name} in ${r.lit}` : `${r.name}${r.op}${r.lit}`;
-  const condText = rows => rows.filter(r => r.name).map((r, i) => (i ? ` ${r.join || "&&"} ` : "") + atom(r)).join("");
+  const atom = r => (r.neg ? "!" : "") + (r.op === "raw" ? r.lit : r.op === "set" ? r.name : r.op === "has" || r.op === "fresh" ? `${r.op}(${r.name})` : r.op === "in" ? `${r.name} in ${r.lit}` : `${r.name}${r.op}${r.lit}`);
+  const condText = rows => rows.filter(r => r.name || r.op === "raw").map((r, i) => (i ? ` ${r.join || "&&"} ` : "") + atom(r)).join("");
   const opt = (k, v) => (/[\s"]/.test(String(v)) ? `${k}=${q(v)}` : `${k}=${v}`);
   function colorOpt(c) {
     const rules = (c.rules || []).filter(r => r.name && r.color);
     if (!rules.length) return c.base && c.base.toLowerCase() !== "#ffffff" ? opt("color", c.base) : "";
-    return opt("color", rules.map(r => `${atom(r)}:${r.color}`).join(",") + "," + (c.base || "#ffffff"));
+    return opt("color", rules.map(r => `${atom(r)}:${r.color}`).join(";") + ";" + (c.base || "#ffffff"));
   }
   function elementLine(e) {
     const o = [];
@@ -127,19 +128,22 @@ const Screens = (() => {
     const rows = [];
     text.split("||").forEach((part, i) => part.split("&&").forEach((a, j) => {
       a = a.trim(); const join = !rows.length ? "&&" : j === 0 ? "||" : "&&";
+      let neg = false; while (a[0] === "!") { neg = !neg; a = a.slice(1).trim(); }
       let m = a.match(/^(has|fresh)\(\s*([a-z0-9_.-]+)\s*\)$/);
-      if (m) return rows.push({ join, op: m[1], name: m[2], lit: "" });
+      if (m) return rows.push({ join, neg, op: m[1], name: m[2], lit: "" });
       m = a.match(/^([a-z0-9_.-]+)\s+in\s+(.+)$/);
-      if (m) return rows.push({ join, op: "in", name: m[1], lit: m[2].trim() });
+      if (m) return rows.push({ join, neg, op: "in", name: m[1], lit: m[2].trim() });
       m = a.match(/^([a-z0-9_.-]+)\s*(==|!=|<=|>=|<|>)\s*(.*)$/);
-      if (m) rows.push({ join, op: m[2], name: m[1], lit: m[3].trim() });
+      if (m) return rows.push({ join, neg, op: m[2], name: m[1], lit: m[3].trim() });
+      m = a.match(/^([a-z0-9_.-]+)$/);
+      if (m) return rows.push({ join, neg, op: "set", name: m[1], lit: "" });
+      rows.push({ join, neg, op: "raw", name: "", lit: a });   // keep anything else exactly as written
     }));
     return rows;
   }
   function colorFromOpt(text) {
     if (!text) return { base: "#ffffff", rules: [] };
-    const parts = []; let acc = "";
-    for (const s of text.split(",")) { acc = acc ? acc + "," + s : s; if (/#[0-9a-f]{6}\s*$/i.test(acc)) { parts.push(acc); acc = ""; } }
+    const parts = text.split(";").map(s => s.trim()).filter(Boolean);
     const c = { base: "#ffffff", rules: [] };
     for (const p of parts) { const i = p.lastIndexOf(":#"); if (i < 0) c.base = p.trim(); else c.rules.push(Object.assign(rowsFromCond(p.slice(0, i))[0] || {}, { color: p.slice(i + 1).trim() })); }
     return c;
@@ -188,7 +192,8 @@ const Screens = (() => {
   }
 
   /* ================================================================ values for the preview */
-  const nowMs = () => Date.now();
+  const nowSec = () => Date.now() / 1000;
+  let frozenT = nowSec();
   function sampleValue(raw) {   // the sample editor's text -> a value (number, text, list, [n, unit], or null)
     if (raw === undefined || raw === null) return undefined;
     if (typeof raw !== "string") return raw;
@@ -203,7 +208,7 @@ const Screens = (() => {
     return s;
   }
   function currentValues() {
-    const vals = {}, t = nowMs(), d = doc();
+    const vals = {}, t = nowSec(), d = doc();
     for (const [k, raw] of Object.entries(d.samples)) { const v = sampleValue(raw); if (v !== undefined && v !== null) R.setValue(vals, k, v, t); }
     if (mode === "live") for (const [k, v] of Object.entries(live)) { if (v === null) delete vals[k]; else R.setValue(vals, k, v, t); }
     return vals;
@@ -212,7 +217,8 @@ const Screens = (() => {
     const d = display();
     const state = (d && d.state) || {};
     const f = Object.entries(state).find(([k]) => /fahrenheit/i.test(k)), h = Object.entries(state).find(([k]) => /12.?h/i.test(k));
-    return { values: currentValues(), nowMs: nowMs(), t: playing ? (performance.now() - t0) / 1000 : 0, icons,
+    const now = nowSec();
+    return { values: currentValues(), now, t: playing ? now : frozenT, icons, iconNames: new Set(lib.icons.map(f => stem(f.name))),
       fahrenheit: f ? /^(on|true|1)$/i.test(f[1]) : false, h12: h ? /^(on|true|1)$/i.test(h[1]) : false };
   }
   async function loadIcons() {   // icons the screen uses, from the display's library
@@ -233,7 +239,7 @@ const Screens = (() => {
   function redo() { if (!redoStack.length) return; undoStack.push(snap()); st.doc = JSON.parse(redoStack.pop()); st.edited = true; afterLoad(); }
   function recompile() {
     const c = compile(doc(), { preview: true });
-    compiled = c.text; lineOf = c.lineOf; parsed = R.parse(compiled, st.name);
+    compiled = c.text; lineOf = c.lineOf; parsed = R.parse(compiled, st.name, ctx());
     dirty = true; renderLayers(); renderErrors();
   }
 
@@ -480,7 +486,7 @@ const Screens = (() => {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
-  $("#scrPlay").addEventListener("click", () => { playing = !playing; $("#scrPlay").textContent = playing ? "⏸" : "▶"; t0 = performance.now(); dirty = true; });
+  $("#scrPlay").addEventListener("click", () => { playing = !playing; frozenT = nowSec(); $("#scrPlay").textContent = playing ? "⏸" : "▶"; dirty = true; });
 
   /* ================================================================ elements list */
   const describe = e => e.type === "text" ? (e.text || "(empty text)") : e.type === "icon" ? (e.byValue ? `icon by ${e.value || "?"}` : `icon ${e.icon || "?"}`)
@@ -519,12 +525,13 @@ const Screens = (() => {
   function renderErrors() {
     if (!st) return;
     const items = [];
-    if (parsed) for (const er of parsed.errors) { const id = lineOf.get(er.line); items.push(`Line ${er.line}${id ? ` (${describe(elById(id))})` : ""}: ${er.msg}`); }
+    if (parsed) for (const er of parsed.errors) { const id = lineOf.get(er.line); items.push(er.line ? `Line ${er.line}${id ? ` (${describe(elById(id))})` : ""}: ${er.msg}` : `Screen settings: ${er.msg}`); }
     if (report && report.unavailable) items.push(`The display couldn't report on its screens (${report.unavailable}). It may need a firmware update with screen support.`);
     else if (report && report.errors) for (const er of report.errors) items.push(`Display, line ${er.line}: ${er.msg}`);
     const v = parsed ? R.visibility(parsed, Object.assign(ctx(), { stale: parsed.stale })) : null;
     $("#scrVis").textContent = !v ? "" : v.missing.length ? `Hidden in the rotation: waiting for ${v.missing.join(", ")}` : v.show ? "✓ Would show in the rotation" : v.lingerCond ? "Shows for the linger time after this state starts" : "Hidden in the rotation (Show when is false)";
-    if (report && !report.unavailable && report.missing && report.missing.length) items.push(`On the display it's waiting for: ${report.missing.join(", ")}`);
+    const miss = report && !report.unavailable ? (Array.isArray(report.missing) ? report.missing : String(report.missing || "").split(/\s+/).filter(Boolean)) : [];
+    if (miss.length) items.push(`On the display it's waiting for: ${miss.join(", ")}`);
     $("#scrErrors").replaceChildren(...items.map(t => el("div", { cls: "err small" }, "⚠ " + t)));
     if ($("#scrFile")) $("#scrFile").textContent = compile(doc()).text;
   }
@@ -597,12 +604,14 @@ const Screens = (() => {
       wrap.replaceChildren(...rows.map((r, i) => {
         const join = el("select", {}, el("option", { value: "&&" }, "AND"), el("option", { value: "||" }, "OR")); join.value = r.join || "&&";
         join.addEventListener("change", () => edit(() => { r.join = join.value; }));
-        const op = el("select", {}, ...OPS.map(o => el("option", { value: o }, o === "has" ? "has a value" : o === "fresh" ? "is fresh" : o))); op.value = r.op || "==";
+        const not = el("button", { cls: "chipbtn" + (r.neg ? " on" : ""), title: "NOT: true when this is false", onclick: () => { edit(() => { r.neg = !r.neg; }); render(); } }, "NOT");
+        const del = el("button", { title: "Remove", onclick: () => { edit(() => rows.splice(i, 1)); render(); } }, "✕");
+        if (r.op === "raw") return el("div", { cls: "condrow" }, i ? join : el("span", { cls: "muted small" }, "if"), not, txt(r, "lit", { placeholder: "condition" }), del);
+        const op = el("select", {}, ...OPS.map(o => el("option", { value: o }, OP_LABEL[o] || o))); op.value = r.op || "==";
         op.addEventListener("change", () => { edit(() => { r.op = op.value; }); render(); });
         const lit = txt(r, "lit", { placeholder: r.op === "in" ? "a,b,c" : "value" });
-        if (r.op === "has" || r.op === "fresh") lit.classList.add("hidden");
-        return el("div", { cls: "condrow" }, i ? join : el("span", { cls: "muted small" }, "if"), valueField(r, "name", "text", true), op, lit,
-          el("button", { title: "Remove", onclick: () => { edit(() => rows.splice(i, 1)); render(); } }, "✕"));
+        if (["has", "fresh", "set"].includes(r.op)) lit.classList.add("hidden");
+        return el("div", { cls: "condrow" }, i ? join : el("span", { cls: "muted small" }, "if"), not, valueField(r, "name", "text", true), op, lit, del);
       }), el("button", { cls: "small", onclick: () => { edit(() => rows.push({ join: "&&", name: "", op: "==", lit: "" })); render(); } }, rows.length ? "+ AND / OR" : `+ ${label}`));
     };
     render(); return wrap;
@@ -613,7 +622,7 @@ const Screens = (() => {
     const render = () => wrap.replaceChildren(
       el("div", { cls: "row" }, colorInput(c, "base"), el("span", { cls: "muted small" }, c.rules.length ? "otherwise" : "")),
       ...c.rules.map((r, i) => {
-        const op = el("select", {}, ...OPS.filter(o => o !== "fresh").map(o => el("option", { value: o }, o === "has" ? "has a value" : o))); op.value = r.op || "==";
+        const op = el("select", {}, ...OPS.filter(o => o !== "fresh").map(o => el("option", { value: o }, OP_LABEL[o] || o))); op.value = r.op || "==";
         op.addEventListener("change", () => edit(() => { r.op = op.value; }));
         return el("div", { cls: "condrow" }, el("span", { cls: "muted small" }, "when"), valueField(r, "name", "num", true), op, txt(r, "lit", { placeholder: "0" }), colorInput(r, "color"),
           el("button", { title: "Remove", onclick: () => { edit(() => c.rules.splice(i, 1)); render(); } }, "✕"));
@@ -624,7 +633,9 @@ const Screens = (() => {
   function fontPicker(e) {   // each font drawn in its own pixels
     return el("div", { cls: "fontpick" }, ...["tiny", "small", "big", "huge"].map(f => {
       const sample = "Ag42", w = R.textWidth(f === "tiny" ? "AG42" : sample, f), h = R.FONTS[f].gh, c = el("canvas", { width: w, height: h });
-      const fb = R.render({ bg: [0, 0, 0], elements: [{ type: "text", x: 0, y: 0, tpl: [f === "tiny" ? "AG42" : sample], font: f, align: "left", valign: "top", overflow: "clip", spacing: 0 }], stale: 21600 }, { values: {} });
+      const fb = R.render(R.parse(`PXS1
+text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
+`, "font"), { values: {} });
       const img = c.getContext("2d").createImageData(w, h);
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const s = (y * 52 + x) * 3, d = (y * w + x) * 4; img.data[d] = fb[s]; img.data[d + 1] = fb[s + 1]; img.data[d + 2] = fb[s + 2]; img.data[d + 3] = 255; }
       c.getContext("2d").putImageData(img, 0, 0);
@@ -636,7 +647,7 @@ const Screens = (() => {
   function templateEditor(e) {
     const ta = el("textarea", { rows: "2", spellcheck: "false" }); ta.value = e.text || "";
     const out = el("div", { cls: "tplout" });
-    const show = () => { try { out.textContent = "→ " + R.format(R.parseTemplate(ta.value), ctx()); out.classList.remove("err"); } catch (er) { out.textContent = "⚠ " + er.message; out.classList.add("err"); } };
+    const show = () => { const r = R.formatText(ta.value, ctx()); out.textContent = r.errors.length ? "⚠ " + r.errors.join("; ") : "→ " + r.text; out.classList.toggle("err", r.errors.length > 0); };
     ta.addEventListener("input", () => { edit(() => { e.text = ta.value; }, { soft: true }); show(); });
     ta.addEventListener("change", () => edit(() => {}));
     const insert = s => { const a = ta.selectionStart, b = ta.selectionEnd; ta.value = ta.value.slice(0, a) + s + ta.value.slice(b); ta.selectionStart = ta.selectionEnd = a + s.length; ta.focus(); edit(() => { e.text = ta.value; }); show(); };
@@ -753,7 +764,8 @@ const Screens = (() => {
     });
     const auto = !ha.available && names.length ? el("details", {}, el("summary", {}, "Example automation (publish the values yourself)"),
       el("pre", { cls: "scr-file" }, exampleAutomation(names))) : "";
-    pane.replaceChildren(...head, el("div", { cls: "valrows" }, ...(rows.length ? rows : [el("p", { cls: "muted small" }, "No values yet. Insert one in a text, or bind an entity.")])), auto);
+    const notes = d.notes ? el("details", {}, el("summary", {}, "Where these values come from (example notes)"), el("pre", { cls: "scr-file" }, d.notes)) : "";
+    pane.replaceChildren(...head, el("div", { cls: "valrows" }, ...(rows.length ? rows : [el("p", { cls: "muted small" }, "No values yet. Insert one in a text, or bind an entity.")])), notes, auto);
   }
   function exampleAutomation(names) {
     const d = display(), topic = d ? d.topic : "pixel2mqtt/display";
@@ -911,8 +923,9 @@ const Screens = (() => {
   function renderAll() { renderLayers(); renderInspector(); renderScreenPane(); renderValuesPane(); renderErrors(); }
 
   /* ================================================================ projects */
-  async function create(name, fromText, samples) {
+  async function create(name, fromText, samples, notes) {
     const d = fromText ? fromScr(fromText, name) : newDoc(name);
+    if (notes) d.notes = notes;
     if (samples) for (const [k, v] of Object.entries(samples)) d.samples[k] = typeof v === "string" ? v : JSON.stringify(v);
     d.settings.name = d.settings.name || name;
     open(name, { meta: { type: "screen", rev: 0, sent: null }, screen: d }, { edited: true });
