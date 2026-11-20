@@ -29,9 +29,14 @@
 
   const seqTotal = l => l.frames.reduce((a, f) => a + Math.max(MIN_DELAY, f.delay), 0);
   const moving = l => l.speed > 0 && (l.dir[0] || l.dir[1]);
+  const gcd2 = (a, b) => (b ? gcd2(b, a % b) : a);
   function span(l) {
-    if (l.span) return l.span;
+    if (l.span) return l.span;   // imported Govee scenes: as graffiti.py
     const f = l.frames[0];
+    if (l.tile && l.dir[0] && l.dir[1]) {   // diagonal tile: it only comes back to the start after a whole number of
+      const m = f.w / gcd2(f.w, f.h) * f.h;   // tiles across AND down, i.e. lcm(w, h) pixels (if that isn't huge)
+      if (m <= 8 * Math.max(f.w, f.h)) return m;
+    }
     return Math.max(l.dir[0] ? f.w : 0, l.dir[1] ? f.h : 0);
   }
 
@@ -184,6 +189,6 @@
       dir: l.dir.slice(), frames: l.frames.map(f => ({ w: f.w, h: f.h, delay: f.delay, rgba: f.rgba.slice() })) })) };
   }
 
-  const api = { newScene, newLayer, plan, render, bake, frameAt, layerPos, toPanel, buildPXA, buildPXI, toJSON, fromJSON, clone, pyRound, seqTotal };
+  const api = { newScene, newLayer, plan, span, render, bake, frameAt, layerPos, toPanel, buildPXA, buildPXI, toJSON, fromJSON, clone, pyRound, seqTotal };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.Scene = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

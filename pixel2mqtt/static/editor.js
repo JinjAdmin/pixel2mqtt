@@ -103,21 +103,26 @@ const Editor = (() => {
     dirty = true;
   }
   // what the canvas shows: playing = the animation; paused = time t, with the selected layer on its selected frame
+  // Moving layers use the speeds plan() tunes for a seamless loop (exactly what's sent), not the raw ones, so the
+  // preview and Live on display loop as cleanly as the display does.
+  const rates = () => Scene.plan(sc).rates;
+  const posOf = (l, R) => Scene.layerPos(l, t, (R || rates()).get(l));
   function composite() {
-    if (playing) return Scene.render(sc, t);
-    const l = L(), view = Object.assign({}, sc, { layers: sc.layers.map(x => x === l ? Object.assign({}, x, { frames: [F()] }) : x) });
-    return Scene.render(view, t);
+    const R = rates();
+    if (playing) return Scene.render(sc, t, R);
+    const l = L(), layers = sc.layers.map(x => x === l ? Object.assign({}, x, { frames: [F()] }) : x);
+    return Scene.render(Object.assign({}, sc, { layers }), t, new Map(layers.map((x, i) => [x, R.get(sc.layers[i])])));
   }
   // the scene over a block of cells V (panel coordinates), same blending as Scene.render; background inside the panel
   function compose(V) {
-    const out = new Uint8ClampedArray(V.w * V.h * 4), sl = L();
+    const out = new Uint8ClampedArray(V.w * V.h * 4), sl = L(), R = rates();
     if (sc.bg) for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) if (inPanel(V.x + x, V.y + y)) {
       const d = (y * V.w + x) * 4; out[d] = sc.bg[0]; out[d + 1] = sc.bg[1]; out[d + 2] = sc.bg[2]; out[d + 3] = 255;
     }
     for (const l of sc.layers) {
       if (l.visible === false) continue;
       if (l.blink > 0 && Math.floor(t / Math.max(20, l.blink)) % 2) continue;
-      const f = !playing && l === sl ? F() : Scene.frameAt(l, t), [ox, oy] = Scene.layerPos(l, t);
+      const f = !playing && l === sl ? F() : Scene.frameAt(l, t), [ox, oy] = posOf(l, R);
       const op = Math.min(100, l.opacity === undefined ? 100 : l.opacity);
       for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) {
         const s = sampleIdx(l, f, ox, oy, V.x + x, V.y + y); if (s < 0) continue;
@@ -134,7 +139,7 @@ const Editor = (() => {
     const [X0, Y0] = origin();
     vis = { x: Math.floor(-X0 / cell), y: Math.floor(-Y0 / cell) };
     vis.w = Math.ceil((CW - X0) / cell) - vis.x; vis.h = Math.ceil((CH - Y0) / cell) - vis.y;
-    const V = vis, c = compose(V), l = L(), f = F(), [lx, ly] = Scene.layerPos(l, t);
+    const V = vis, c = compose(V), l = L(), f = F(), [lx, ly] = posOf(l);
     const img = new ImageData(V.w, V.h), px = img.data;
     for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) {
       const i = (y * V.w + x) * 4, wx = V.x + x, wy = V.y + y, inP = inPanel(wx, wy), chk = (wx + wy) & 1;
@@ -204,7 +209,7 @@ const Editor = (() => {
   // Does everything fit the loop a whole number of times? Frame sequences and blink cycles that don't would jump
   // at the loop point (moving layers are always adjusted to wrap evenly).
   function loopHint() {
-    const len = loopLen, lines = [], bad = [];
+    const len = loopLen, lines = [], bad = [], R = rates();
     let longest = 0, any = false;
     const fit = (name, what, u) => {
       any = true; longest = Math.max(longest, u);
@@ -216,20 +221,25 @@ const Editor = (() => {
       if (l.visible === false) continue;
       if (l.frames.length > 1 || l.timed) fit(l.name, `${l.frames.length} frames`, Scene.seqTotal(l));
       if (l.blink > 0) fit(l.name, "blink cycle", 2 * Math.max(20, l.blink));
-      if (l.speed > 0 && (l.dir[0] || l.dir[1])) { any = true; lines.push(`✓ ${l.name}: moves, adjusted to wrap evenly`); }
+      if (l.speed > 0 && (l.dir[0] || l.dir[1])) {
+        any = true;
+        const r = R.get(l), f = l.frames[0], d = r ? r * len : 0, whole = (n, w) => !n || Math.abs(d / w - Math.round(d / w)) < 1e-6;
+        if (whole(l.dir[0], f.w) && whole(l.dir[1], f.h)) lines.push(`✓ ${l.name}: moves ${(r * 1000).toFixed(1)} px/s, wraps evenly`);
+        else { lines.push(`✗ ${l.name}: moving diagonally, a ${f.w}×${f.h} tile doesn't come back round evenly`); bad.push(l.name); }
+      }
     }
     const h = $("#loopHint");
     if (!any) { h.textContent = ""; h.title = ""; h.className = "loophint small"; return; }
     if (bad.length) { h.textContent = `⚠ ${bad.join(", ")} won't loop evenly`; h.className = "loophint small warn"; }
     else if (longest && len > longest + 1) { h.textContent = `ⓘ loop stretched to ${(len / 1000).toFixed(2)} s to fit every layer`; h.className = "loophint small info"; }
     else { h.textContent = "✓ loops seamlessly"; h.className = "loophint small ok"; }
-    h.title = `Loop ${(len / 1000).toFixed(2)} s\n` + lines.join("\n") + (bad.length ? "\n\nTip: make frame totals and blink cycles (2 × blink) divide evenly into each other." : "");
+    h.title = `Loop ${(len / 1000).toFixed(2)} s\n` + lines.join("\n") + (bad.length ? "\n\nTip: make frame totals and blink cycles (2 × blink) divide evenly into each other. A layer moving diagonally loops best as a square tile (W = H)." : "");
   }
 
   /* ---------------------------------------------------------------- drawing */
   // screen cell -> pixel index in the selected layer's current frame (or -1)
   function layerIndex(x, y) {
-    const l = L(), f = F(), [ox, oy] = Scene.layerPos(l, t);
+    const l = L(), f = F(), [ox, oy] = posOf(l);
     return sampleIdx(l, f, ox, oy, x, y);
   }
   function setPx(x, y, c) { const i = layerIndex(x, y); if (i >= 0) { F().rgba.set(c, i); touch(); } }
