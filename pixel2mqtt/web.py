@@ -221,8 +221,11 @@ def make_handler(mgr, config):
                 return self.send(200, st)
             if p == ["history"]:
                 return self.send(200, ha.history(q["entity"], float(q.get("hours", 24)), int(q.get("points", 32)), q.get("attr") or None))
-            if p == ["values"] and m == "POST":   # {bindings: {name: spec}} -> {name: value} (Live preview)
-                return self.send(200, b.preview(self.jbody().get("bindings") or {}))
+            if p == ["values"] and m == "POST":   # {bindings: {name: spec}, member?} -> {name: value} (Live preview)
+                body = self.jbody()
+                return self.send(200, b.preview(body.get("bindings") or {}, body.get("member")))
+            if p == ["members"]:   # a screen group's members: ?by=integration|label|device|domain|entities&match=...
+                return self.send(200, ha.members(q.get("by", ""), q.get("match", "")))
             raise KeyError("unknown endpoint")
 
         def display_api(self, m, d, p, q):
@@ -230,7 +233,7 @@ def make_handler(mgr, config):
             if p == ["screens"] and m == "GET":   # what the display reports: errors, visibility, missing values
                 return self.send(200, api.screens())
             if p == ["bindings"] and m == "GET":
-                return self.send(200, {"screens": mgr.bindings.screens(d.id), "ha": mgr.ha.status()})
+                return self.send(200, {"screens": mgr.bindings.screens(d.id), "groups": mgr.bindings.groups(d.id), "ha": mgr.ha.status()})
             if p[:1] == ["screens"] and len(p) == 2:
                 name = formats.safe_name(p[1])
                 if not name:
@@ -243,7 +246,7 @@ def make_handler(mgr, config):
                     if len(scr) > 16384:
                         raise ValueError("screen file larger than 16 KB")
                     api.put_file("screens", name + ".scr", scr)
-                    mgr.bindings.activate(d.id, name, b.get("bindings") or {})
+                    mgr.bindings.activate(d.id, name, b.get("bindings") or {}, b.get("group"))
                     log.info("sent screen %s (%d bytes, %d bindings) to %s", name, len(scr), len(b.get("bindings") or {}), d.name)
                     return self.send(200, {"ok": True, "name": name})
                 if m == "DELETE":

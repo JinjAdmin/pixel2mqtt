@@ -34,6 +34,7 @@ class Display:
         self.state = {}          # rewritten topic suffix -> last payload (e.g. "animation/state")
         self.seq = 0
         self.storage = None
+        self.dev_ids = None     # the display's device identifiers in HA discovery (for entities pixel2mqtt adds)
         self._stop = threading.Event()
         self._cmds = queue.Queue()
         self._need_disc = threading.Event()
@@ -107,7 +108,14 @@ class Display:
             p = msg["p"]
             if t.startswith(self.mgr.disc_prefix + "/") and p.startswith("{"):
                 try:
-                    p = json.dumps(self.map_payload(json.loads(p)), separators=(",", ":"))
+                    obj = self.map_payload(json.loads(p))
+                    p = json.dumps(obj, separators=(",", ":"))
+                    dev = obj.get("dev") or obj.get("device") or {}
+                    ids = dev.get("ids") or dev.get("identifiers") if isinstance(dev, dict) else None
+                    if ids and ids != self.dev_ids:
+                        self.dev_ids = ids if isinstance(ids, list) else [ids]
+                        if self.mgr.bindings:
+                            self.mgr.bindings.publish_groups(self.id)
                 except ValueError:
                     pass
             if t.startswith(self.topic + "/"):
@@ -208,6 +216,8 @@ class Manager:
         if self.mqtt:
             self.mqtt.subscribe(d.topic + "/+/set")
             self.mqtt.subscribe(d.topic + "/status")   # to undo a stray "offline" (see _on_message)
+            self.mqtt.subscribe(d.topic + "/group/+/select")   # screen groups (template screens): HA select / number
+            self.mqtt.subscribe(d.topic + "/group/+/rotate")
         d.start()
         return d
 
@@ -217,6 +227,9 @@ class Manager:
         for d in self.displays.values():
             d.refresh_discovery()
             self.mqtt.publish(d.topic + "/status", "online" if d.online else "offline", retain=True)
+        if self.bindings:
+            self.bindings._disc.clear()
+            self.bindings.publish_groups()
 
     def _publish_bridge_device(self):
         cfg = {"name": "Bridge state", "uniq_id": "pixel2mqtt_bridge_state", "stat_t": self.bridge_state_topic,
@@ -230,6 +243,9 @@ class Manager:
                 self._publish_bridge_device()
                 for d in self.displays.values():
                     d.refresh_discovery()
+                if self.bindings:
+                    self.bindings._disc.clear()
+                    self.bindings.publish_groups()
             return
         for d in list(self.displays.values()):
             if topic == d.topic + "/status":
@@ -238,6 +254,16 @@ class Manager:
                 if payload != b"online" and d.online:
                     log.info("%s: status was set to %r by someone else; republishing online", d.name, payload)
                     self.mqtt.publish(d.topic + "/status", "online", retain=True)
+                return
+            if self.bindings and topic.startswith(d.topic + "/group/"):
+                hit = self.bindings.on_command(d, topic)
+                if hit:
+                    screen, what = hit
+                    text = payload.decode("utf-8", "replace").strip()
+                    if what == "select":
+                        self.bindings.select(d.id, screen, text)
+                    else:
+                        self.bindings.set_rotate(d.id, screen, text)
                 return
             if topic_matches(d.topic + "/+/set", topic):
                 d.command(topic[len(d.topic) + 1:-4], payload)

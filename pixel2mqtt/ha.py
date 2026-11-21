@@ -134,7 +134,7 @@ class HomeAssistant:
         self.error = getattr(self, "error", "")
         self.version = ""
         self.states = {}          # entity_id -> {"s": state, "a": attributes, "t": last_updated}
-        self.areas, self.devices, self.entities = {}, {}, {}
+        self.areas, self.devices, self.entities, self.labels = {}, {}, {}, {}
         self.listeners = []       # fn(entity_id, new_state_dict or None)
         self.on_connect = []      # fn()
         self._ws = None
@@ -236,7 +236,7 @@ class HomeAssistant:
                 reader = threading.Thread(target=self._reader, args=(ws,), name="ha-reader", daemon=True)
                 reader.start()
                 self._load_all()
-                for t in ("state_changed", "area_registry_updated", "device_registry_updated", "entity_registry_updated"):
+                for t in ("state_changed", "area_registry_updated", "device_registry_updated", "entity_registry_updated", "label_registry_updated"):
                     self._call("subscribe_events", event_type=t)
                 self.connected, self.error, backoff = True, "", 2
                 log.info("connected to Home Assistant %s (%d entities)", self.version, len(self.states))
@@ -309,12 +309,18 @@ class HomeAssistant:
                 except Exception:  # noqa: BLE001
                     log.exception("state listener failed")
         elif et.endswith("_registry_updated"):
-            threading.Thread(target=self._reload_registry, args=(et.split("_")[0],), daemon=True).start()
+            def reload(which=et.split("_")[0]):
+                self._reload_registry(which)
+                for fn in list(getattr(self, "on_registry", [])):
+                    fn()
+            threading.Thread(target=reload, daemon=True).start()
 
     def _reload_registry(self, which):
         try:
             if which == "area":
                 self.areas = {a["area_id"]: a for a in self._call("config/area_registry/list")}
+            elif which == "label":
+                self.labels = {lb["label_id"]: lb for lb in self._call("config/label_registry/list")}
             elif which == "device":
                 self.devices = {d["id"]: d for d in self._call("config/device_registry/list")}
             else:
@@ -325,8 +331,10 @@ class HomeAssistant:
     def _load_all(self):
         self.states = {s["entity_id"]: {"s": s.get("state"), "a": s.get("attributes") or {}, "t": s.get("last_updated")}
                        for s in self._call("get_states")}
-        for w in ("area", "device", "entity"):
+        for w in ("area", "device", "entity", "label"):
             self._reload_registry(w)
+        for fn in list(getattr(self, "on_registry", [])):
+            fn()
 
     # ------------------------------------------------------------------ for the editor
     def registry(self):
@@ -351,8 +359,45 @@ class HomeAssistant:
                 "integration": reg.get("platform") or eid.split(".")[0], "state": st["s"],
                 "unit": a.get("unit_of_measurement"), "dc": a.get("device_class"), "sc": a.get("state_class"),
                 "attrs": sorted(k for k in a if k not in ("friendly_name", "icon", "entity_picture", "supported_features")),
+                "labels": list(reg.get("labels") or []),
             })
-        return {"areas": areas, "devices": devs, "entities": ents}
+        labels = [{"id": k, "name": v.get("name") or k} for k, v in self.labels.items()]
+        return {"areas": areas, "devices": devs, "entities": ents, "labels": labels}
+
+    # ------------------------------------------------------------------ groups (template screens)
+    def members(self, by, match):
+        """Entities in a screen group, sorted by name: [{id, name}].
+        by: integration (platform), label (id or name), device (id or name), domain (entity type, e.g. sensor),
+        entities (comma-separated entity ids)."""
+        match = (match or "").strip()
+        if not match:
+            return []
+        m = match.lower()
+        want_ids = [x.strip() for x in match.split(",") if x.strip()] if by == "entities" else None
+        label_ids = {k for k, v in self.labels.items() if k.lower() == m or (v.get("name") or "").lower() == m} if by == "label" else set()
+        out = []
+        for eid, st in self.states.items():
+            reg = self.entities.get(eid) or {}
+            if reg.get("disabled_by") or reg.get("hidden_by"):
+                continue
+            dev = self.devices.get(reg.get("device_id")) or {}
+            if by == "integration":
+                ok = (reg.get("platform") or "").lower() == m
+            elif by == "label":
+                ok = bool(label_ids & set(reg.get("labels") or [])) or bool(label_ids & set(dev.get("labels") or []))
+            elif by == "device":
+                ok = bool(dev) and (dev.get("id") == match or (dev.get("name_by_user") or dev.get("name") or "").lower() == m)
+            elif by == "domain":
+                ok = eid.split(".")[0] == m
+            elif by == "entities":
+                ok = eid in want_ids
+            else:
+                ok = False
+            if ok:
+                out.append({"id": eid, "name": st["a"].get("friendly_name") or reg.get("name") or reg.get("original_name") or eid})
+        if want_ids:
+            return sorted(out, key=lambda e: want_ids.index(e["id"]))
+        return sorted(out, key=lambda e: e["name"].lower())
 
     def state(self, entity_id):
         st = self.states.get(entity_id)
