@@ -23,6 +23,62 @@ import urllib.request
 log = logging.getLogger("ha")
 
 
+FLAT_GAP = 3600   # s: a value that doesn't change for longer than this is a closed stretch, cut from sparklines
+KEEP_CUT = 900    # s: what's left of a cut stretch (one typical update)
+
+
+def active_series(samples, start, end, want, points, gap=FLAT_GAP):
+    """Samples [(t, v)] (state changes over [start, end]) -> `points` values covering the last `want` seconds in which
+    the value moved. Runs without a change for longer than `gap` are removed (their duration counts as zero), so
+    closed markets don't draw flat lines. If the data itself starts late (a new sensor), the start is back-filled
+    with the first value, as before; otherwise the moving time found is stretched across the width."""
+    samples = [(t, v) for t, v in samples if t <= end]
+    if not samples:
+        return []
+    merged = []
+    for t, v in samples:   # repeated values are one run
+        if not merged or v != merged[-1][1]:
+            merged.append((max(t, start), v))
+    runs = []   # (duration that counts, value), oldest first
+    for i, (t, v) in enumerate(merged):
+        t1 = merged[i + 1][0] if i + 1 < len(merged) else end
+        d = t1 - t
+        if d > 0:   # a closed stretch keeps a short slice of its level (e.g. the closing price), not its length
+            runs.append((d if d <= gap else min(d, KEEP_CUT), v))
+    late = samples[0][0] > start + 60   # the sensor's data starts inside the window: keep the leading back-fill
+    if not runs:   # nothing moved: one level
+        return [round(merged[-1][1], 4)] * points
+    total, keep, acc = sum(d for d, _ in runs), [], 0.0
+    for d, v in reversed(runs):   # the newest `want` seconds of movement
+        if acc >= want:
+            break
+        take = min(d, want - acc)
+        keep.append((take, v))
+        acc += take
+    keep.reverse()
+    if acc < want and late:
+        keep.insert(0, (want - acc, keep[0][1]))   # leading back-fill
+        acc = want
+    # time-weighted mean of each of `points` equal slices of the kept time
+    out, step, i, pos = [], acc / points, 0, 0.0
+    for k in range(points):
+        lo, hi, wsum, vsum = k * step, (k + 1) * step, 0.0, 0.0
+        while i < len(keep):
+            d, v = keep[i]
+            a, b = max(lo, pos), min(hi, pos + d)
+            if b > a:
+                wsum += b - a
+                vsum += v * (b - a)
+            if pos + d <= hi:
+                pos += d
+                i += 1
+            else:
+                break
+        out.append(round(vsum / wsum, 4) if wsum else (out[-1] if out else round(keep[0][1], 4)))
+    out[-1] = round(keep[-1][1], 4)   # the last point is the current value
+    return out
+
+
 class WSClosed(Exception):
     pass
 
@@ -155,18 +211,34 @@ class HomeAssistant:
                                                                 "Content-Type": "application/json"})
         return json.loads(urllib.request.urlopen(req, timeout=timeout).read() or b"null")
 
+    RECORDER_HOURS = 240   # the recorder keeps 10 days by default; longer windows use long-term statistics
+    LOOKBACK = 7           # look up to 7x further back to find enough hours where the value moved
+
     def history(self, entity_id, hours=24, points=32, attr=None):
-        """Numeric history from the recorder, resampled to `points` evenly spaced buckets (mean, gaps carried)."""
+        """A sparkline series: the last `hours` of time in which the value moved, resampled to `points`.
+        Stretches without any change for over an hour (a closed market, a weekend) are cut out, so a stock
+        shows its last trading session(s) back to back; values that change all day (crypto) are unaffected.
+        Windows longer than the recorder keeps come from HA's long-term statistics."""
         if not self.available:
             raise ValueError("no Home Assistant access")
-        hours, points = max(0.1, min(float(hours), 24 * 30)), max(2, min(int(points), 64))
-        end = datetime.datetime.now(datetime.timezone.utc)
-        start = end - datetime.timedelta(hours=hours)
-        q = {"filter_entity_id": entity_id, "end_time": end.isoformat()}
+        hours, points = max(0.1, min(float(hours), 24 * 366)), max(2, min(int(points), 64))
+        now = time.time()
+        if hours > self.RECORDER_HOURS and not attr:
+            span = min(hours * 4, 24 * 366 * 2)
+            samples = self._statistics(entity_id, now - span * 3600, now, "hour" if hours <= 24 * 60 else "day")
+        else:
+            span = min(hours * self.LOOKBACK, max(hours, self.RECORDER_HOURS))
+            samples = self._recorder(entity_id, now - span * 3600, now, attr)
+        return active_series(samples, now - span * 3600, now, hours * 3600, points)
+
+    def _recorder(self, entity_id, start, end, attr=None):
+        """[(timestamp, value)] from the recorder's state history (the state at `start` included)."""
+        s, e = (datetime.datetime.fromtimestamp(x, datetime.timezone.utc) for x in (start, end))
+        q = {"filter_entity_id": entity_id, "end_time": e.isoformat()}
         if not attr:
             q.update(minimal_response="", no_attributes="")
-        rows = self.get(f"/history/period/{urllib.parse.quote(start.isoformat())}?" + urllib.parse.urlencode(q), timeout=60)
-        samples = []
+        rows = self.get(f"/history/period/{urllib.parse.quote(s.isoformat())}?" + urllib.parse.urlencode(q), timeout=60)
+        out = []
         for r in (rows[0] if rows else []):
             v = (r.get("attributes") or {}).get(attr) if attr else r.get("state")
             try:
@@ -175,21 +247,23 @@ class HomeAssistant:
                 continue
             ts = r.get("last_changed") or r.get("last_updated")
             if ts:
-                samples.append((datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp(), v))
-        if not samples:
-            return []
-        t0, span = start.timestamp(), hours * 3600
-        sums, counts = [0.0] * points, [0] * points
-        for ts, v in samples:
-            i = min(points - 1, max(0, int((ts - t0) / span * points)))
-            sums[i] += v
-            counts[i] += 1
-        out, last = [], samples[0][1]
-        for i in range(points):
-            if counts[i]:
-                last = sums[i] / counts[i]
-            out.append(round(last, 4))
-        return out
+                out.append((datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp(), v))
+        return sorted(out)
+
+    def _statistics(self, entity_id, start, end, period="hour"):
+        """[(timestamp, mean)] from HA's long-term statistics (recorder/statistics_during_period)."""
+        iso = lambda x: datetime.datetime.fromtimestamp(x, datetime.timezone.utc).isoformat()  # noqa: E731
+        r = self._call("recorder/statistics_during_period", start_time=iso(start), end_time=iso(end), statistic_ids=[entity_id],
+                       period=period, types=["mean", "state"]) or {}
+        out = []
+        for row in r.get(entity_id) or []:
+            v = row.get("mean") if row.get("mean") is not None else row.get("state")
+            t = row.get("start")
+            if v is None or t is None:
+                continue
+            t = t / 1000 if isinstance(t, (int, float)) else datetime.datetime.fromisoformat(str(t).replace("Z", "+00:00")).timestamp()
+            out.append((t, float(v)))
+        return sorted(out)
 
     # ------------------------------------------------------------------ websocket
     def start(self):
