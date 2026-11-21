@@ -228,8 +228,15 @@
     <div class="card"><h3>Animations <span id="animCount" class="muted"></span></h3>
       <canvas id="animPrev" width="52" height="32" class="prev"></canvas>
       <div id="animList" class="list"></div></div>
-    <div class="card"><h3>Icons <span id="iconCount" class="muted"></span></h3><div id="iconGrid" class="icongrid"></div></div>
+    <div class="card"><h3>Screens <span id="screenCount" class="muted"></span></h3>
+      <canvas id="scrPrev" width="52" height="32" class="prev" title="Click a screen to preview it with its current values"></canvas>
+      <div id="scrPrevNote" class="muted small">Click a screen to preview it.</div>
+      <div id="screenList" class="list"></div></div>
+    <div class="card"><h3>Icons <span id="iconCount" class="muted"></span></h3><div id="iconList" class="list"></div></div>
     <div class="card"><h3>Sounds <span id="soundCount" class="muted"></span></h3><div id="soundList" class="list"></div></div>
+    <div class="card"><h3>Projects not on this display <span id="offCount" class="muted"></span></h3>
+      <p class="hint">Saved in pixel2mqtt but not (or no longer) on the display. Send puts one there.</p>
+      <div id="offList" class="list"></div></div>
   </div>
 </section>
 

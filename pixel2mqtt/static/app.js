@@ -84,7 +84,7 @@ function frameAt(a, ms) {
 }
 /* ------------------------------------------------------------------ app state */
 let status = null, cur = null;
-const lib = { anims: [], icons: [], sounds: [] };
+const lib = { anims: [], icons: [], sounds: [], screens: [] };
 const iconCache = new Map();  // "name" -> parsed PXI (current display)
 
 function display() { return status && status.displays.find(d => d.id === cur); }
@@ -132,19 +132,27 @@ async function refreshStorage() {
 }
 
 /* ------------------------------------------------------------------ library */
+// Everything on the display: animations, screens, icons and sounds, each with a preview, open in the editor,
+// rename and delete; plus the projects that aren't on it, with Send.
+const total = list => list.reduce((a, f) => a + (f.ro ? 0 : f.size || 0), 0);
+let scrReport = [];
 async function loadLibrary() {
-  if (!cur) { lib.anims = lib.icons = lib.sounds = []; renderLibrary(); return; }
+  if (!cur) { lib.anims = lib.icons = lib.sounds = lib.screens = []; scrReport = []; renderLibrary(); return; }
   try {
-    const [a, i, s] = await Promise.all(["anims", "icons", "sounds"].map(k => api(`/displays/${cur}/files/${k}`)));
+    const [a, i, s, sc] = await Promise.all(["anims", "icons", "sounds", "screens"].map(k => api(`/displays/${cur}/files/${k}`).catch(() => [])));
     const by = (x, y) => x.name.localeCompare(y.name, undefined, { sensitivity: "base" });
     lib.anims = a.filter(f => f.name.endsWith(".anim")).sort(by);
     lib.icons = i.sort(by);
+    lib.screens = sc.filter(f => f.name.endsWith(".scr")).sort(by);
     const seen = new Set();
     lib.sounds = s.filter(f => { const l = soundLabel(f.name).toLowerCase(); if (seen.has(l)) return false; seen.add(l); return true; })
       .sort((x, y) => soundLabel(x.name).localeCompare(soundLabel(y.name)));
   } catch (e) { toast("Library: " + e.message, true); }
+  try { const r = await api(`/displays/${cur}/screens`); scrReport = Array.isArray(r) ? r : (r.screens || []); } catch (e) { scrReport = []; }
   renderLibrary();
 }
+const projectFor = (name, kind) => (typeof Editor !== "undefined" ? Editor.projectList() : []).find(p => p.meta.sent && p.meta.sent.as === name && (p.meta.type === kind || (kind === "anim" && !p.meta.type)));
+const heading = (id, list) => { $(id).textContent = `${list.length}${total(list) ? " · " + fmtBytes(total(list)) : ""}`; };
 function renderLibrary() {
   const opts = (list, fn) => list.length ? list.map(fn) : [el("option", { value: "" }, "(none)")];
   $("#animSel").replaceChildren(...opts(lib.anims, f => el("option", { value: stem(f.name) }, stem(f.name))));
@@ -153,31 +161,61 @@ function renderLibrary() {
   const st = display() && display().state;
   if (st && st.animation) $("#animSel").value = st.animation;
   if (typeof Editor !== "undefined") Editor.refreshOpenList();
-  $("#animCount").textContent = lib.anims.length; $("#iconCount").textContent = lib.icons.length; $("#soundCount").textContent = lib.sounds.length;
+  heading("#animCount", lib.anims); heading("#iconCount", lib.icons); heading("#soundCount", lib.sounds); heading("#screenCount", lib.screens || []);
 
   $("#animList").replaceChildren(...lib.anims.map(f => el("div", { cls: "item" },
     el("span", { cls: "n", title: "Preview", onclick: () => previewAnim(f) }, stem(f.name)),
     el("span", { cls: "s" }, fmtBytes(f.size)),
     el("button", { title: "Play on the display", onclick: () => cmd("animation", stem(f.name)) }, "▶"),
     el("button", { title: "Open in the editor (as layers when possible)", onclick: () => { Editor.openAnim(stem(f.name)); showTab("editor"); } }, "✎"),
-    el("button", { title: "Rename (a re-import keeps the new name)", onclick: () => renameAnim(f.name) }, "Aa"),
+    el("button", { title: "Rename (a re-import keeps the new name)", onclick: () => renameFile("anims", f.name) }, "Aa"),
     el("button", { title: "Delete from the display", onclick: () => delFile("anims", f.name) }, "✕"))));
-  const grid = $("#iconGrid"); grid.replaceChildren();
-  for (const f of lib.icons) {
-    const c = el("canvas", { width: 1, height: 1 });
-    const name = stem(f.name);
-    grid.append(el("div", { cls: "ic", title: `${name} - click to add it as a layer in the editor`, onclick: () => { Editor.addIconLayer(name); showTab("editor"); } }, c,
-      el("span", {}, name),
-      el("button", { cls: "x", title: "Edit in the icon editor", onclick: e => { e.stopPropagation(); Editor.editIcon(name); } }, "✎")));
-    getIcon(name).then(ic => { c.width = ic.w; c.height = ic.h; c.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(ic.frames[0].rgba), ic.w, ic.h), 0, 0); }).catch(() => {});
-  }
+
+  $("#screenList").replaceChildren(...((lib.screens || []).length ? lib.screens.map(f => {
+    const name = stem(f.name), r = scrReport.find(x => x.file === f.name || x.name === name) || {};
+    const miss = Array.isArray(r.missing) ? r.missing : String(r.missing || "").split(/\s+/).filter(Boolean);
+    const state = r.errors && r.errors.length ? ["chip warn", `${r.errors.length} problem${r.errors.length > 1 ? "s" : ""}`, r.errors.map(e => `line ${e.line}: ${e.msg}`).join("\n")]
+      : r.visible ? ["chip ok", "showing", "In the Info rotation"] : miss.length ? ["chip draft", "waiting", "Waiting for " + miss.join(", ")] : r.name ? ["chip draft", "hidden", "Its Show when rule is false right now"] : null;
+    const p = projectFor(name, "screen");
+    return el("div", { cls: "item" },
+      el("span", { cls: "n", title: "Preview with its current values", onclick: () => previewScreen(f) }, (r.name && r.name !== name ? `${r.name} (${name})` : name)),
+      state ? el("span", { cls: state[0], title: state[2] }, state[1]) : "",
+      el("span", { cls: "s" }, fmtBytes(f.size)),
+      el("button", { title: "Show it now (pins it in Info mode; Auto in HA's Screen select resumes the rotation)", onclick: () => cmd("screen", r.name || name) }, "▶"),
+      el("button", { title: p ? `Open the project "${p.name}"` : "Open a copy in the screen editor", onclick: () => openScreen(f, p) }, "✎"),
+      el("button", { title: "Rename (its value bindings follow)", onclick: () => renameFile("screens", f.name) }, "Aa"),
+      el("button", { title: "Remove from the display (its value bindings stop)", onclick: () => removeScreen(name) }, "✕"));
+  }) : [el("p", { cls: "muted small" }, cur ? "No screens on this display. Make one in the Editor: + New screen." : "Adopt a display first.")]));
+
+  $("#iconList").replaceChildren(...lib.icons.map(f => {
+    const name = stem(f.name), c = el("canvas", { width: 1, height: 1, cls: "thumb" });
+    getIcon(name).then(ic => { c.width = ic.w; c.height = ic.h; c.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(ic.frames[0].rgba), ic.w, ic.h), 0, 0); c.title = `${ic.w}×${ic.h}, ${ic.frames.length} frame${ic.frames.length > 1 ? "s" : ""}`; }).catch(() => {});
+    return el("div", { cls: "item" }, c,
+      el("span", { cls: "n", title: "Add it as a layer in the editor", onclick: () => { Editor.addIconLayer(name); showTab("editor"); } }, name),
+      el("span", { cls: "s" }, fmtBytes(f.size)),
+      el("button", { title: "Edit a copy in the icon editor", onclick: () => { Editor.editIcon(name); showTab("editor"); } }, "✎"),
+      el("button", { title: "Rename (screens that use it by name need updating)", onclick: () => renameFile("icons", f.name) }, "Aa"),
+      el("button", { title: "Delete from the display", onclick: () => delFile("icons", f.name) }, "✕"));
+  }));
+
   $("#soundList").replaceChildren(...lib.sounds.map(f => el("div", { cls: "item" },
     el("span", { cls: "n", title: f.dir + "/" + f.name }, soundLabel(f.name)),
     el("span", { cls: "s" }, f.ro ? "built-in" : fmtBytes(f.size)),
     el("button", { title: "Play on the display", onclick: () => cmd("chime", stem(f.name)) }, "♪"),
+    f.ro ? "" : el("button", { title: "Rename", onclick: () => renameFile("sounds", f.name) }, "Aa"),
     f.ro ? "" : el("button", { title: "Delete from the display", onclick: () => delFile("sounds", f.name) }, "✕"))));
+
+  // projects that aren't on the display (never sent, removed, or renamed there)
+  const on = { anim: new Set(lib.anims.map(f => stem(f.name))), icon: new Set(lib.icons.map(f => stem(f.name))), screen: new Set((lib.screens || []).map(f => stem(f.name))) };
+  const off = (typeof Editor !== "undefined" ? Editor.projectList() : []).filter(p => !(p.meta.sent && (on[p.meta.type || "anim"] || new Set()).has(p.meta.sent.as)));
+  $("#offCount").textContent = off.length;
+  $("#offList").replaceChildren(...(off.length ? off.map(p => el("div", { cls: "item" },
+    el("span", { cls: "badge" }, p.meta.type === "icon" ? "Icon" : p.meta.type === "screen" ? "Screen" : "Animation"),
+    el("span", { cls: "n", title: "Open in the editor", onclick: () => Editor.openProject(p.name) }, p.name),
+    el("button", { title: "Open in the editor", onclick: () => Editor.openProject(p.name) }, "✎"),
+    el("button", Object.assign({ cls: "primary", title: cur ? "Send to the display" : "Adopt a display first", onclick: () => Editor.openAndSend(p.name) }, cur ? {} : { disabled: "" }), "Send"))) : [el("p", { cls: "muted small" }, "Every project is on the display.")]));
 }
-let prevTimer;
+let prevTimer, scrTimer;
 async function previewAnim(f) {
   clearInterval(prevTimer);
   const c = $("#animPrev").getContext("2d");
@@ -191,16 +229,75 @@ async function previewAnim(f) {
     }, 33);
   } catch (e) { toast(e.message, true); }
 }
+// a screen on the display, rendered as pixeld would: its bound values live from HA (the group's shown member),
+// otherwise its project's samples
+async function previewScreen(f) {
+  clearInterval(scrTimer);
+  const name = stem(f.name), c = $("#scrPrev").getContext("2d");
+  try {
+    const text = new TextDecoder().decode(await api(`/displays/${cur}/files/screens/${enc(f.name)}`));
+    const values = {}, now = () => Date.now() / 1000;
+    const p = projectFor(name, "screen");
+    if (p) { try { const raw = await api(`/scenes/${enc(p.name)}`); for (const [k, v] of Object.entries((raw.screen && raw.screen.samples) || {})) { let x = v; try { x = JSON.parse(v); } catch (e) { /* text */ } ScreenRender.setValue(values, k, x, now()); } } catch (e) { /* no samples */ } }
+    let bindings = {}, member = null;
+    try {
+      const b = await api(`/displays/${cur}/bindings`);
+      bindings = (b.screens || {})[name] || {};
+      const g = (b.groups || {})[name];
+      if (g) {
+        member = g.selected !== "rotate" ? g.selected : null;
+        if (!member) { const ms = await api(`/ha/members?by=${enc(g.by)}&match=${enc(g.match)}`); member = ms.length ? ms[0].id : null; }
+      }
+      if (Object.keys(bindings).length) ScreenRender.applyMessage(values, Object.fromEntries(Object.entries(await postJSON("/ha/values", { bindings, member })).filter(([, v]) => v !== null)), now());
+    } catch (e) { /* no HA: samples only */ }
+    let source = Object.keys(bindings).length ? "live values from Home Assistant" : p ? "the project's sample values" : "";
+    if (!Object.keys(values).length) {   // nothing yet: an example with this name lends its samples
+      try {
+        const ex = (await (await fetch("examples/screens/index.json")).json()).find(x => x.name.toLowerCase() === name.toLowerCase() || x.file === f.name);
+        if (ex) { ScreenRender.applyMessage(values, await (await fetch(`examples/screens/${enc(ex.values)}`)).json(), now()); source = "the example's sample values"; }
+      } catch (e) { /* none */ }
+    }
+    $("#scrPrevNote").textContent = `${name}: ${source ? "with " + source : "no values yet (bind them in the screen editor)"}`;
+    const icons = {};
+    for (const ic of lib.icons) if (text.includes(stem(ic.name))) { try { const x = await getIcon(stem(ic.name)); icons[stem(ic.name)] = { w: x.w, h: x.h, frames: x.frames.map(fr => ({ delay: fr.delay, rgba: fr.rgba })) }; } catch (e) { /* skip */ } }
+    const st = display() && display().state || {};
+    const flag = re => { const kv = Object.entries(st).find(([k]) => re.test(k)); return kv ? /^(on|true|1)$/i.test(kv[1]) : false; };
+    const scr = ScreenRender.parse(text, name, { values, icons });
+    const img = new ImageData(PW, PH);
+    scrTimer = setInterval(() => {
+      const fb = ScreenRender.render(scr, { values, icons, now: now(), fahrenheit: flag(/fahrenheit/i), h12: flag(/12.?h/i) });
+      for (let i = 0, j = 0; i < FRAME; i += 3, j += 4) { img.data[j] = fb[i]; img.data[j + 1] = fb[i + 1]; img.data[j + 2] = fb[i + 2]; img.data[j + 3] = 255; }
+      c.putImageData(img, 0, 0);
+    }, 100);
+  } catch (e) { toast(e.message, true); }
+}
+async function openScreen(f, p) {
+  if (p) return Editor.openProject(p.name);
+  try {   // no project for it (made elsewhere): open a copy as a new screen project
+    const text = new TextDecoder().decode(await api(`/displays/${cur}/files/screens/${enc(f.name)}`));
+    showTab("editor"); await Editor.refreshOpenList();
+    const taken = new Set(Editor.projectList().map(x => x.name.toLowerCase()));
+    let n = `${stem(f.name)} (copy)`, i = 2; while (taken.has(n.toLowerCase())) n = `${stem(f.name)} (copy ${i++})`;
+    Screens.create(n, text);
+    toast(`Opened a copy of "${stem(f.name)}" as "${n}". The screen on the display isn't touched.`);
+  } catch (e) { toast(e.message, true); }
+}
+async function removeScreen(name) {
+  if (!await ask(`Remove the screen "${name}" from the display? Its value bindings stop. Its project (if any) stays in pixel2mqtt.`, { ok: "Remove", danger: true })) return;
+  try { await api(`/displays/${cur}/screens/${enc(name)}`, { method: "DELETE" }); toast("Removed " + name); await loadLibrary(); refreshStorage(); }
+  catch (e) { toast(e.message, true); }
+}
 async function cmd(name, payload) {
   if (!cur) return toast("Adopt a display first", true);
   try { await api(`/displays/${cur}/cmd/${name}`, { method: "POST", body: payload }); toast(`${name}: ${payload}`); } catch (e) { toast(e.message, true); }
 }
-async function renameAnim(name) {
-  const n = await askText(`New name for "${stem(name)}"`, stem(name), { ok: "Rename" });
+async function renameFile(kind, name) {
+  const n = await askText(`New name for "${kind === "sounds" ? soundLabel(name) : stem(name)}"`, stem(name), { ok: "Rename" });
   if (n === null || !n.trim() || n.trim() === stem(name)) return;
-  try { const r = await postJSON(`/displays/${cur}/rename`, { name, new: n.trim() }); toast("Renamed to " + stem(r.name)); await loadLibrary(); }
+  try { const r = await postJSON(`/displays/${cur}/rename`, { kind, name, new: n.trim() }); toast("Renamed to " + stem(r.name)); if (kind === "icons") iconCache.clear(); await loadLibrary(); }
   catch (e) { toast(e.message, true); }
 }
+const renameAnim = name => renameFile("anims", name);
 async function delFile(kind, name) {
   if (!await ask(`Delete ${name} from the display? This can't be undone.`, { ok: "Delete", danger: true })) return;
   try { await api(`/displays/${cur}/files/${kind}/${enc(name)}`, { method: "DELETE" }); toast("Deleted " + name); await loadLibrary(); refreshStorage(); }

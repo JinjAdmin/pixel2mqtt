@@ -299,27 +299,39 @@ def make_handler(mgr, config):
             if p == ["dedupe"] and m == "POST":
                 job = jobs.start("Remove duplicate animations", lambda prog: stock.dedupe(api, progress=prog))
                 return self.send(200, job)
-            if p == ["rename"] and m == "POST":  # {"name": "Old.anim", "new": "New name"} (animations)
+            if p == ["rename"] and m == "POST":  # {"name": "Old.anim", "new": "New name", "kind": "anims"|"icons"|"screens"|"sounds"}
                 b = self.jbody()
-                old = b.get("name", "")
-                if not old.endswith(".anim"):
-                    raise ValueError("only animations can be renamed")
+                kind, old = b.get("kind", "anims"), b.get("name", "")
+                exts = {"anims": (".anim",), "icons": (".pxi",), "screens": (".scr",), "sounds": formats.SOUND_EXT}
+                if kind not in exts:
+                    raise ValueError("unknown kind")
+                ext = "." + old.rsplit(".", 1)[-1].lower() if "." in old else ""
+                if ext not in exts[kind]:
+                    raise ValueError(f"not a {kind[:-1]} file")
+                stem_old = old[: -len(ext)]
                 new = formats.safe_name(b.get("new", ""))
-                if new == old[:-5]:
+                if kind == "sounds":
+                    new = new.replace(" ", "_")
+                if not new:
+                    raise ValueError("bad name")
+                if new == stem_old:
                     return self.send(200, {"ok": True, "name": old})
-                have = {f["name"] for f in api.files("anims")}
+                have = {f["name"] for f in api.files(kind)}
                 if old not in have:
-                    raise KeyError(f"no animation {old}")
-                if new + ".anim" in have:
-                    raise ValueError(f"an animation called {new} already exists")
-                api.put_file("anims", new + ".anim", api.get_file("anims", old))
-                if old[:-5] + ".clock" in have:   # clock-position sidecar moves with it
-                    api.put_file("anims", new + ".clock", api.get_file("anims", old[:-5] + ".clock"))
-                    api.delete_file("anims", old[:-5] + ".clock")
-                api.delete_file("anims", old)
-                cache.drop(d.id, "anims", old)
-                renames.record(d.id, "anims", old[:-5], new)
-                return self.send(200, {"ok": True, "name": new + ".anim"})
+                    raise KeyError(f"no file {old}")
+                if new + ext in have:
+                    raise ValueError(f"{new} already exists")
+                api.put_file(kind, new + ext, api.get_file(kind, old))
+                if kind == "anims" and stem_old + ".clock" in have:   # clock-position sidecar moves with it
+                    api.put_file("anims", new + ".clock", api.get_file("anims", stem_old + ".clock"))
+                    api.delete_file("anims", stem_old + ".clock")
+                api.delete_file(kind, old)
+                cache.drop(d.id, kind, old)
+                if kind == "anims":
+                    renames.record(d.id, "anims", stem_old, new)
+                if kind == "screens":   # its value bindings (and group) follow it
+                    mgr.bindings.rename_screen(d.id, stem_old, new)
+                return self.send(200, {"ok": True, "name": new + ext})
             if p == ["upload"] and m == "POST":
                 return self.upload(d, q)
             if p[:1] == ["files"] and len(p) >= 2:

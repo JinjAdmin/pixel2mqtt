@@ -328,3 +328,6 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent2); }
 .groupbox { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
 .grouppick { margin: 6px 0; gap: 6px; }
 .grouppick select { max-width: 200px; }
+.list .item .thumb { width: 24px; height: 24px; image-rendering: pixelated; background: #000; border-radius: 2px; object-fit: contain; flex: none; }
+.list .item .chip { font-size: 11px; padding: 0 6px; }
+.list .item .badge { flex: none; }

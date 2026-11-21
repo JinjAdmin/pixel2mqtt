@@ -341,6 +341,7 @@ const Screens = (() => {
       toast(`"${st.name}" is on the display` + (Object.keys(bindings).length ? `, with ${Object.keys(bindings).length} value${Object.keys(bindings).length > 1 ? "s" : ""} from Home Assistant` : "") +
         (unbound.length ? `. Not bound: ${unbound.join(", ")}` : ""));
       setTimeout(fetchReport, 1500);
+      loadLibrary(); refreshStorage();
     } catch (e) { toast(e.message, true); }
   }
   async function removeFromDisplay() {
@@ -1021,5 +1022,5 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
     d.settings.name = d.settings.name || name;
     open(name, { meta: { type: "screen", rev: 0, sent: null }, screen: d }, { edited: true });
   }
-  return { open, close, isOpen, save, create, compile: d => compile(d).text, fromScr, usedNames };
+  return { open, close, isOpen, save, create, send, compile: d => compile(d).text, fromScr, usedNames };
 })();

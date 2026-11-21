@@ -242,6 +242,20 @@ class Bindings:
             self._drop_unused(dev_id, before)
         self._unpublish(dev_id, screen)
 
+    def rename_screen(self, dev_id, old, new):
+        with self.lock:
+            d = self._disp(dev_id)
+            if old not in d.get("screens", {}):
+                return
+            d["screens"][new] = d["screens"].pop(old)
+            g = d.get("groups", {}).pop(old, None)
+            if g:
+                d["groups"][new] = g
+            self._save()
+        if g:
+            self._unpublish(dev_id, old)
+            self.publish_groups(dev_id)
+
     def forget_display(self, dev_id):
         for screen in list(self.groups(dev_id)):
             self._unpublish(dev_id, screen)

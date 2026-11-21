@@ -1055,5 +1055,12 @@ const Editor = (() => {
     s.classList.remove("hidden");
     s.addEventListener("change", () => { const x = list[+s.value]; s.value = ""; if (x) newScreen(x); });
   }).catch(() => {});
-  return { addIconLayer, editIcon, openAnim, refreshOpenList, makePicker, showProjects };
+  const projectList = () => projects.map(p => ({ name: p.name, meta: projectMeta(p), w: p.w, h: p.h }));
+  async function openAndSend(name) {   // the Library's Send: open the project, then send it like the editor's button
+    await openProject(name);
+    showTab("editor");
+    if (typeof Screens !== "undefined" && Screens.isOpen()) return Screens.send();
+    if (proj.open && proj.name === name) return sendToDisplay();
+  }
+  return { addIconLayer, editIcon, openAnim, refreshOpenList, makePicker, showProjects, projectList, openProject: n => { showTab("editor"); return openProject(n); }, openAndSend };
 })();
