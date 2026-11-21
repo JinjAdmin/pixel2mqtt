@@ -16,6 +16,8 @@ const Screens = (() => {
   const icons = {};          // name -> {w, h, frames} from the display's icon library
   // groups (template screens): the members of this screen's group, and the one the preview shows
   let members = [], previewMember = null, memberAttrs = [], membersKey = "";
+  const FC_PERIODS = [["now", "Now (this hour)"], ["today", "Today"], ["tonight", "Tonight"], ["d1", "Tomorrow (+1 day)"], ["d2", "+2 days"], ["d3", "+3 days"]];
+  const FC_FIELDS = [["temp", "Temperature (high by day, low at night)"], ["high", "High"], ["low", "Low"], ["condition", "Condition"], ["day", "Day name (SUN)"]];
   const BY = [["integration", "Integration"], ["label", "Label"], ["device", "Device"], ["domain", "Entity type"], ["entities", "Entities"]];
   const FMTS = [["", "as is"], ["short_symbol", "Short symbol (^GSPC → S&P, BTC-USD → BTC)"], ["price_prefix", "Price prefix ($, none for indexes)"], ["is_crypto", "Is crypto (1 or 0)"]];
   let drag = null, guides = [], dirty = true;
@@ -828,6 +830,7 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
       const sample = el("input", { type: "text", value: d.samples[n] === undefined ? "" : String(d.samples[n]), placeholder: "sample", spellcheck: "false", title: "Sample value: 42, 48.2 °F, running, 1,2,3 (a list), or null" });
       sample.addEventListener("change", () => { edit(() => { if (sample.value === "") delete d.samples[n]; else d.samples[n] = sample.value; }); renderValuesPane(); });
       const what = !b ? "not bound" : b.kind === "const" ? `fixed: ${b.value}` : b.kind === "group" ? groupWhat(b)
+        : b.kind === "forecast" ? `${b.entity} · forecast ${(FC_PERIODS.find(x => x[0] === b.period) || [0, b.period])[1].toLowerCase()} · ${(FC_FIELDS.find(x => x[0] === b.field) || [0, b.field])[1].split(" (")[0].toLowerCase()}`
         : `${b.entity}${b.kind === "attr" ? " · " + b.attr : b.kind === "history" ? ` · history ${b.hours} h / ${b.points} pts` : ""}`;
       const shown = v === undefined ? "–" : Array.isArray(v) && v.length === 2 && typeof v[1] === "string" ? `${v[0]} ${v[1]}` : Array.isArray(v) ? `[${v.length} points]` : String(v);
       return el("div", { cls: "valrow" + (used ? "" : " unused") },
@@ -920,6 +923,8 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
       const name = el("input", { type: "text", value: opts.name || suggestName(e), spellcheck: "false" });
       const hours = el("input", { type: "number", value: "24", min: "1" }), pts = el("input", { type: "number", value: "32", min: "2", max: "64" });
       const k = kindOf(e);
+      const fcPeriod = el("select", {}, ...FC_PERIODS.map(([v, l]) => el("option", { value: v }, l)));
+      const fcField = el("select", {}, ...FC_FIELDS.map(([v, l]) => el("option", { value: v }, l)));
       const nm = () => { const v = name.value.trim().toLowerCase(); if (!R.NAME_RE.test(v)) { toast("Value names use a-z, 0-9, _ . - (up to 31 characters)", true); return null; } return v; };
       body.replaceChildren(el("div", { cls: "pk-choose" },
         el("button", { cls: "link", onclick: () => renderBody() }, "◂ back"),
@@ -929,7 +934,10 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
         e.attrs.length ? el("div", { cls: "tp-label" }, "Or an attribute") : "",
         el("div", { cls: "row wrap" }, ...e.attrs.map(a => el("button", { onclick: () => { const n = nm(); if (n) done({ entity: e.id, kind: "attr", attr: a }, n); } }, a))),
         k.num ? el("div", { cls: "tp-label" }, "Or its history (for sparklines)") : "",
-        k.num ? el("div", { cls: "row wrap" }, field("last hours", hours), field("points", pts), el("button", { onclick: () => { const n = nm(); if (n) done({ entity: e.id, kind: "history", hours: +hours.value || 24, points: Math.max(2, Math.min(64, +pts.value || 32)) }, n); } }, "Use history")) : ""));
+        k.num ? el("div", { cls: "row wrap" }, field("last hours", hours), field("points", pts), el("button", { onclick: () => { const n = nm(); if (n) done({ entity: e.id, kind: "history", hours: +hours.value || 24, points: Math.max(2, Math.min(64, +pts.value || 32)) }, n); } }, "Use history")) : "",
+        e.id.startsWith("weather.") ? el("div", { cls: "tp-label" }, "Or its forecast (fetched every 15 minutes; temperatures carry their unit)") : "",
+        e.id.startsWith("weather.") ? el("div", { cls: "row wrap" }, field("when", fcPeriod), field("what", fcField),
+          el("button", { onclick: () => { const n = nm(); if (n) done({ entity: e.id, kind: "forecast", period: fcPeriod.value, field: fcField.value }, n); } }, "Use forecast")) : ""));
       name.focus(); name.select();
     }
     const entRow = e => el("button", { cls: "pk-ent", onclick: () => choose(e) }, el("span", {}, e.name), el("span", { cls: "muted small" }, e.id), el("span", { cls: "pk-state" }, stateLine(e)));

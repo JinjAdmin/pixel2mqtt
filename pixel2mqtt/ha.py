@@ -399,6 +399,33 @@ class HomeAssistant:
             return sorted(out, key=lambda e: want_ids.index(e["id"]))
         return sorted(out, key=lambda e: e["name"].lower())
 
+    # ------------------------------------------------------------------ weather forecasts
+    FORECAST_TTL = 900   # s: weather.get_forecasts every 15 minutes per entity
+
+    def forecasts(self, entity_id, max_age=None):
+        """{"hourly": [...], "twice_daily": [...] or "daily": [...], "unit": "°F", "at": t} for a weather entity,
+        from weather.get_forecasts (cached). Types the entity doesn't support are left out."""
+        cache = self.__dict__.setdefault("_fc", {})
+        hit = cache.get(entity_id)
+        if hit and time.time() - hit["at"] < (self.FORECAST_TTL if max_age is None else max_age):
+            return hit
+        st = self.states.get(entity_id)
+        if not st or not self.connected:
+            return hit
+        feat = int(st["a"].get("supported_features") or 0)   # 1 daily, 2 hourly, 4 twice daily
+        out = {"at": time.time(), "unit": st["a"].get("temperature_unit") or ""}
+        for typ, bit in (("hourly", 2), ("twice_daily", 4), ("daily", 1)):
+            if not feat & bit or (typ == "daily" and "twice_daily" in out):
+                continue
+            try:
+                r = self._call("call_service", domain="weather", service="get_forecasts", target={"entity_id": entity_id},
+                               service_data={"type": typ}, return_response=True)
+                out[typ] = (((r or {}).get("response") or {}).get(entity_id) or {}).get("forecast") or []
+            except Exception as e:  # noqa: BLE001
+                log.debug("forecast %s %s: %s", entity_id, typ, e)
+        cache[entity_id] = out
+        return out
+
     def state(self, entity_id):
         st = self.states.get(entity_id)
         return None if st is None else {"state": st["s"], "attributes": st["a"], "last_updated": st["t"]}

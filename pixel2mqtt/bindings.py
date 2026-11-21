@@ -108,6 +108,95 @@ def transform(fmt, v, st):
     return v
 
 
+# ------------------------------------------------------------------ weather forecasts
+PERIODS = ("now", "today", "tonight", "d1", "d2", "d3")
+FIELDS = ("temp", "high", "low", "condition", "day")
+
+
+def _day_name(iso):
+    import datetime
+    try:
+        return datetime.datetime.fromisoformat(str(iso).replace("Z", "+00:00")).strftime("%a").upper()
+    except ValueError:
+        return None
+
+
+def forecast_value(fc, st, period, field):
+    """One value from a weather entity's forecasts (see HomeAssistant.forecasts), like the old template package:
+    - now: the current hour of the hourly forecast (temp, condition); without one, the entity's own reading;
+    - twice_daily (NWS): today = the first period if it's daytime (late in the day: no high), tonight = the first
+      night, day N = the Nth daytime period after today, and its low the night after it;
+    - daily (Met and others): today = the first day, day N = the Nth after it, lows from templow.
+    Temperatures come as [value, unit] (unit from temperature_unit)."""
+    fc = fc or {}
+    unit = fc.get("unit") or ((st or {}).get("a") or {}).get("temperature_unit") or ""
+
+    def temp(p, key="temperature"):
+        v = (p or {}).get(key)
+        return None if v is None else ([v, unit] if unit else v)
+
+    if period == "now":
+        h = (fc.get("hourly") or [None])[0]
+        a = (st or {}).get("a") or {}
+        if field in ("temp", "high", "low"):
+            return temp(h) if h else (temp(a) if a.get("temperature") is not None else None)
+        if field == "condition":
+            return (h or {}).get("condition") or (st or {}).get("s")
+        if field == "day":
+            return _day_name((h or {}).get("datetime")) if h else None
+        return None
+    td, dl = fc.get("twice_daily"), fc.get("daily")
+    if td:
+        days, nights = [p for p in td if p.get("is_daytime")], [p for p in td if not p.get("is_daytime")]
+        first_day = td[0] if td[0].get("is_daytime") else None
+        later_days = [p for p in (td[1:] if first_day else td) if p.get("is_daytime")]
+        if period == "today":
+            if field in ("temp", "high"):
+                return temp(first_day)
+            if field == "low":
+                return temp(nights[0]) if nights else None
+            if field == "condition":
+                return ((days or td)[0]).get("condition")
+            if field == "day":
+                return _day_name(td[0].get("datetime"))
+        elif period == "tonight":
+            n = nights[0] if nights else None
+            if field in ("temp", "low"):
+                return temp(n)
+            if field == "high":
+                return None
+            if field == "condition":
+                return (n or {}).get("condition")
+            if field == "day":
+                return _day_name((n or {}).get("datetime"))
+        else:
+            k = int(period[1:])
+            d = later_days[k - 1] if len(later_days) >= k else None
+            if field in ("temp", "high"):
+                return temp(d)
+            if field == "low":
+                return temp(nights[k]) if len(nights) > k else None
+            if field == "condition":
+                return (d or {}).get("condition")
+            if field == "day":
+                return _day_name((d or {}).get("datetime"))
+        return None
+    if dl:
+        k = 0 if period in ("today", "tonight") else int(period[1:])
+        d = dl[k] if len(dl) > k else None
+        if field == "temp":
+            return temp(d, "templow") if period == "tonight" else temp(d)
+        if field == "high":
+            return None if period == "tonight" else temp(d)
+        if field == "low":
+            return temp(d, "templow")
+        if field == "condition":
+            return (d or {}).get("condition")
+        if field == "day":
+            return _day_name((d or {}).get("datetime"))
+    return None
+
+
 def split_messages(values: dict):
     """{name: value} -> JSON payloads of at most MAX_MSG bytes each."""
     out, cur = [], {}
@@ -191,6 +280,10 @@ class Bindings:
             kind = spec.get("kind", "state")
             if kind == "const":
                 clean[name] = {"kind": "const", "value": str(spec.get("value", ""))[:63]}
+                continue
+            if kind == "forecast":
+                if spec.get("entity") and spec.get("period") in PERIODS and spec.get("field") in FIELDS:
+                    clean[name] = {"kind": "forecast", "entity": str(spec["entity"]), "period": spec["period"], "field": spec["field"]}
                 continue
             if kind == "group":
                 s = {"kind": "group", "source": spec.get("source", "state") if spec.get("source") in ("state", "attr", "history") else "state"}
@@ -439,6 +532,9 @@ class Bindings:
             if spec.get("fmt") == "short_symbol" and src["kind"] == "state" and isinstance(v, list):
                 v = v[0]
             return transform(spec.get("fmt"), v, self.ha.states.get(entity)) if spec.get("fmt") else v
+        if spec.get("kind") == "forecast":
+            eid = spec.get("entity", "")
+            return forecast_value(self.ha.forecasts(eid), self.ha.states.get(eid), spec.get("period"), spec.get("field"))
         if spec.get("kind") == "history":
             return value_of(spec, None, self._history(spec, 0 if fresh_history else self._hist_period(spec)))
         return value_of(spec, self.ha.states.get(spec.get("entity", "")))
@@ -503,7 +599,7 @@ class Bindings:
 
     def _on_state(self, entity_id, _st):
         for dev_id in list(self.data["displays"]):
-            self.refresh(dev_id, only=lambda s, e: e == entity_id and s.get("kind") not in ("history", "const") and s.get("source") != "history")
+            self.refresh(dev_id, only=lambda s, e: e == entity_id and s.get("kind") not in ("history", "const", "forecast") and s.get("source") != "history")
 
     def _history_loop(self):
         tick = min(30.0, self.resend_every / 2)
@@ -512,7 +608,7 @@ class Bindings:
                 if self.active(dev_id) and time.time() - self._full_at.get(dev_id, 0) >= self.resend_every:
                     self.resend_all(dev_id)
                 else:
-                    self.refresh(dev_id, only=lambda s, e: s.get("kind") == "history" or s.get("source") == "history")
+                    self.refresh(dev_id, only=lambda s, e: s.get("kind") in ("history", "forecast") or s.get("source") == "history")
 
     def _flush_loop(self):
         while not self._stop.wait(1.0):

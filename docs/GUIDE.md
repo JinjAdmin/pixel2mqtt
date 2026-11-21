@@ -173,7 +173,7 @@ Start one with **+ New screen**, or **From example…** (Today, Forecast, 3D pri
   one, and the chips add formatters: Integer, Decimals, Thousands, %, Duration, Temperature, Time, Ago, Upper and
   Fallback. The result shows underneath as you type.
 - **Values** lists every value the screen uses. **Bind** connects one to a Home Assistant entity: its state, one of
-  its attributes, or its **history** (for sparklines). The entity picker searches names, ids, devices, areas and
+  its attributes, or its **history** (for sparklines). A weather entity also offers its **forecast**: now (this hour), today, tonight or up to three days ahead, as temperature, high, low, condition or day name, with the temperature unit attached. The entity picker searches names, ids, devices, areas and
   integrations (words in any order), or browses Area → Device → Entity. Each value also has a **sample**, so you can
   try states like `finish` without waiting for a real print. **Sample / Live** at the top switches the preview
   between samples and Home Assistant's live values.
