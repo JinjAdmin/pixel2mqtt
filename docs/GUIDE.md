@@ -183,6 +183,14 @@ Start one with **+ New screen**, or **From example…** (Today, Forecast, 3D pri
 - **Send to display** uploads the screen and starts sending its bound values (batched, about once a second, and
   again whenever the display restarts). **Remove from display** takes it off and stops its values.
 
+**Template screens (groups).** One screen can show any of several similar entities, such as every stock ticker. In
+**Screen**, turn on **Group** and pick the members: every entity of an integration (e.g. `easy_stock`), a label, a
+device, an entity type or a list. Then, in **Values**, take each value from the group with **◫ Group** (state, an
+attribute or history, with display forms such as *Short symbol* `^GSPC → S&P`). The member picker at the top of
+Values previews any member. After **Send to display**, Home Assistant gets a dropdown with every member plus
+**Rotate**, and a number for the rotate time. Rotate steps through the members every N seconds, all of a member's
+values change together, and new members (a new ticker in Easy Stock) appear in the dropdown by themselves.
+
 Home Assistant access is automatic in the add-on. In Docker, set `HA_URL` and `HA_TOKEN_FILE` (see the README).
 Without it, values are plain names: publish them yourself to `<topic>/values/set`, and the Values tab shows an
 example automation.

@@ -325,3 +325,6 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent2); }
   .pk-cols .pk-col:last-child { display: flex; }
   .pk-back { display: inline-block; }
 }
+.groupbox { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+.grouppick { margin: 6px 0; gap: 6px; }
+.grouppick select { max-width: 200px; }

@@ -14,6 +14,10 @@ const Screens = (() => {
   let selId = null, undoStack = [], redoStack = [], mode = "sample", live = {}, liveErr = "", t0 = performance.now(), playing = true;
   let ha = { available: false }, reg = null, regAt = 0, report = null, compiled = null, parsed = null, lineOf = new Map();
   const icons = {};          // name -> {w, h, frames} from the display's icon library
+  // groups (template screens): the members of this screen's group, and the one the preview shows
+  let members = [], previewMember = null, memberAttrs = [], membersKey = "";
+  const BY = [["integration", "Integration"], ["label", "Label"], ["device", "Device"], ["domain", "Entity type"], ["entities", "Entities"]];
+  const FMTS = [["", "as is"], ["short_symbol", "Short symbol (^GSPC → S&P, BTC-USD → BTC)"], ["price_prefix", "Price prefix ($, none for indexes)"], ["is_crypto", "Is crypto (1 or 0)"]];
   let drag = null, guides = [], dirty = true;
   const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -316,7 +320,7 @@ const Screens = (() => {
   function open(name, data, opts = {}) {
     st = { name, rev: (data.meta && data.meta.rev) || 0, sent: (data.meta && data.meta.sent) || null, edited: !!opts.edited, doc: data.screen || newDoc(name) };
     for (const e of st.doc.elements) if (!e.id) e.id = uid();
-    undoStack = []; redoStack = []; live = {}; report = null; t0 = performance.now();
+    undoStack = []; redoStack = []; live = {}; report = null; t0 = performance.now(); members = []; previewMember = null; membersKey = "";
     root.classList.remove("hidden"); afterLoad(); refreshHA(); fetchReport();
     if (opts.edited) save(true).catch(e => toast(e.message, true));
   }
@@ -331,7 +335,7 @@ const Screens = (() => {
     for (const n of names) if (doc().bindings[n]) bindings[n] = doc().bindings[n];
     try {
       await save(true);
-      await api(`/displays/${cur}/screens/${enc(st.name)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scr: c.text, bindings }) });
+      await api(`/displays/${cur}/screens/${enc(st.name)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scr: c.text, bindings, group: groupOf() }) });
       st.sent = { as: st.name, rev: st.rev }; await save(true); syncDoc();
       const unbound = names.filter(n => !doc().bindings[n]);
       toast(`"${st.name}" is on the display` + (Object.keys(bindings).length ? `, with ${Object.keys(bindings).length} value${Object.keys(bindings).length > 1 ? "s" : ""} from Home Assistant` : "") +
@@ -728,7 +732,74 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
       el("div", { cls: "tp-label" }, "Keep showing after"), condBuilder(s.linger, "Keep showing after… (e.g. a print finishes)"),
       s.linger.length ? field("for", durSel("lingerFor", "30m")) : "",
       el("div", { cls: "row wrap" }, field("Stale after", durSel("stale", "6h")), field("Time on screen (s)", num(s, "time", { nullable: true, placeholder: "default" })), field("Order", num(s, "order", { nullable: true, placeholder: "100" }))),
-      field("Background", colorInput(s, "bg")));
+      field("Background", colorInput(s, "bg")),
+      groupSection(s));
+  }
+  // Group: this screen is a template, shown for one member of a group of entities at a time
+  function groupOf() { const g = doc().settings.group; return g && g.by && g.match ? { name: g.name || `${st.name} member`, by: g.by, match: g.match, rotate: +g.rotate || 8 } : null; }
+  function groupSection(s) {
+    const box = el("div", { cls: "groupbox" });
+    const on = el("input", { type: "checkbox" }); on.checked = !!s.group;
+    on.addEventListener("change", () => { edit(() => { s.group = on.checked ? { name: `${st.name} member`, by: "integration", match: "", rotate: 8 } : null; }); renderScreenPane(); loadMembers(); });
+    box.append(el("div", { cls: "tp-label" }, "Group (template screen)"),
+      el("label", { cls: "small" }, on, " Show one of several similar entities (e.g. every stock ticker), picked in Home Assistant or rotating"));
+    if (!s.group) return box;
+    const g = s.group;
+    const by = el("select", {}, ...BY.map(([v, l]) => el("option", { value: v }, l))); by.value = g.by;
+    by.addEventListener("change", () => { edit(() => { g.by = by.value; g.match = ""; }); renderScreenPane(); loadMembers(); });
+    const match = el("input", { type: "text", value: g.match || "", spellcheck: "false", list: "grpSuggest", placeholder: g.by === "entities" ? "sensor.a, sensor.b" : g.by === "domain" ? "sensor" : g.by === "integration" ? "easy_stock" : "" });
+    match.addEventListener("change", () => { edit(() => { g.match = match.value.trim(); }); loadMembers(); });
+    const dl = el("datalist", { id: "grpSuggest" });
+    loadRegistry().then(r => {
+      if (!r) return;
+      const opts = g.by === "integration" ? [...new Set(r.entities.map(e => e.integration))] : g.by === "label" ? (r.labels || []).map(l => l.name)
+        : g.by === "device" ? r.devices.map(d => d.name).filter(Boolean) : g.by === "domain" ? [...new Set(r.entities.map(e => e.id.split(".")[0]))] : [];
+      dl.replaceChildren(...opts.sort().map(o => el("option", { value: o })));
+    }).catch(() => {});
+    const list = el("div", { cls: "muted small" }, !g.match ? "Pick what the members have in common." : members.length ? `${members.length} member${members.length === 1 ? "" : "s"}: ${members.map(m => m.name).join(", ")}` : "No members match (yet).");
+    box.append(el("div", { cls: "row wrap" }, field("Members by", by), field(BY.find(x => x[0] === g.by)[1], match)), dl, list,
+      el("div", { cls: "row wrap" }, field("Dropdown name in Home Assistant", txt(g, "name", { placeholder: `${st.name} member` })), field("Rotate every (s)", num(g, "rotate"))),
+      el("p", { cls: "hint" }, "After Send to display, Home Assistant gets a dropdown with every member plus Rotate, and a number for the rotate time. In the Values tab, take values from the group (◫ Group) and preview any member."));
+    return box;
+  }
+  async function loadMembers() {
+    const g = groupOf();
+    if (!g || !ha.available) { members = []; if (st) renderValuesPane(); return; }
+    const key = g.by + "|" + g.match;
+    try { members = await api(`/ha/members?by=${enc(g.by)}&match=${enc(g.match)}`); } catch (e) { members = []; }
+    if (!members.some(m => m.id === previewMember)) previewMember = members.length ? members[0].id : null;
+    if (key !== membersKey) { membersKey = key; await loadMemberAttrs(); }
+    if (!$("#scrPaneScreen").classList.contains("hidden")) renderScreenPane();
+    renderValuesPane(); refreshLive();
+  }
+  async function loadMemberAttrs() {
+    memberAttrs = [];
+    if (!previewMember) return;
+    try { memberAttrs = Object.keys((await api(`/ha/state?entity=${enc(previewMember)}`)).attributes || {}).filter(k => !["friendly_name", "icon", "entity_picture"].includes(k)).sort(); } catch (e) { memberAttrs = []; }
+  }
+  const groupWhat = b => `group · ${b.source === "attr" ? "attribute " + b.attr : b.source === "history" ? `history ${b.hours} h / ${b.points} pts` : "state"}${b.fmt ? " · " + FMTS.find(f => f[0] === b.fmt)[1].split(" (")[0].toLowerCase() : ""}`;
+  function fromGroup(n) {   // map a value to the group's current member: state, an attribute or history, plus a display form
+    const old = doc().bindings[n] && doc().bindings[n].kind === "group" ? doc().bindings[n] : { kind: "group", source: "state" };
+    const m = Object.assign({ hours: 24, points: 48 }, old);
+    const dlg = el("dialog", { cls: "ask" }), body = el("div", { cls: "pk-choose" });
+    const src = el("select", {}, el("option", { value: "state" }, "State"), el("option", { value: "attr" }, "Attribute"), el("option", { value: "history" }, "History (for sparklines)")); src.value = m.source;
+    const attr = el("select", {}, ...[...new Set([...(m.attr ? [m.attr] : []), ...memberAttrs])].map(a => el("option", { value: a }, a))); if (m.attr) attr.value = m.attr;
+    const hours = el("input", { type: "number", value: String(m.hours), min: "1" }), pts = el("input", { type: "number", value: String(m.points), min: "2", max: "64" });
+    const fmt = el("select", {}, ...FMTS.map(([v, l]) => el("option", { value: v }, l))); fmt.value = m.fmt || "";
+    const render = () => body.replaceChildren(el("h3", {}, `${n} from the group`),
+      el("p", { cls: "muted small" }, `Read from whichever member is shown${previewMember ? ` (preview: ${(members.find(x => x.id === previewMember) || {}).name || previewMember})` : ""}.`),
+      field("From", src), src.value === "attr" ? field("Attribute", attr) : "",
+      src.value === "history" ? el("div", { cls: "row wrap" }, field("last hours", hours), field("points", pts)) : "",
+      src.value !== "history" ? field("Display form", fmt) : "",
+      el("div", { cls: "row" }, el("button", { onclick: () => dlg.close() }, "Cancel"), el("button", { cls: "primary", onclick: () => {
+        const b = { kind: "group", source: src.value };
+        if (src.value === "attr") { if (!attr.value) return toast("Pick an attribute", true); b.attr = attr.value; }
+        if (src.value === "history") { b.hours = +hours.value || 24; b.points = Math.max(2, Math.min(64, +pts.value || 48)); }
+        if (src.value !== "history" && fmt.value) b.fmt = fmt.value;
+        edit(() => { doc().bindings[n] = b; }); dlg.close(); renderValuesPane(); refreshLive();
+      } }, "Use")));
+    src.addEventListener("change", render);
+    render(); dlg.append(body); dlg.addEventListener("close", () => dlg.remove()); document.body.append(dlg); dlg.showModal();
   }
 
   /* ================================================================ values panel */
@@ -755,7 +826,8 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
       const b = d.bindings[n], used = names.includes(n), v = mode === "live" && n in live ? live[n] : sampleValue(d.samples[n]);
       const sample = el("input", { type: "text", value: d.samples[n] === undefined ? "" : String(d.samples[n]), placeholder: "sample", spellcheck: "false", title: "Sample value: 42, 48.2 °F, running, 1,2,3 (a list), or null" });
       sample.addEventListener("change", () => { edit(() => { if (sample.value === "") delete d.samples[n]; else d.samples[n] = sample.value; }); renderValuesPane(); });
-      const what = !b ? "not bound" : b.kind === "const" ? `fixed: ${b.value}` : `${b.entity}${b.kind === "attr" ? " · " + b.attr : b.kind === "history" ? ` · history ${b.hours} h / ${b.points} pts` : ""}`;
+      const what = !b ? "not bound" : b.kind === "const" ? `fixed: ${b.value}` : b.kind === "group" ? groupWhat(b)
+        : `${b.entity}${b.kind === "attr" ? " · " + b.attr : b.kind === "history" ? ` · history ${b.hours} h / ${b.points} pts` : ""}`;
       const shown = v === undefined ? "–" : Array.isArray(v) && v.length === 2 && typeof v[1] === "string" ? `${v[0]} ${v[1]}` : Array.isArray(v) ? `[${v.length} points]` : String(v);
       return el("div", { cls: "valrow" + (used ? "" : " unused") },
         el("div", { cls: "vtop" }, el("button", { cls: "vname", title: "Rename (updates every element that uses it)", onclick: () => renameValue(n) }, n),
@@ -764,11 +836,19 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
         el("div", { cls: "row" }, sample,
           el("button", { title: b ? "Bind to a different entity" : "Bind to an entity", onclick: () => pickEntity({ for: "text", name: n, onPick: () => renderValuesPane() }) }, b ? "⇄ Rebind" : "⌕ Bind"),
           el("button", { title: "A fixed value the display always gets, e.g. BTC (no Home Assistant needed)", onclick: () => fixedValue(n) }, "= Fixed"),
+          groupOf() ? el("button", { title: "Take this value from the group's current member", onclick: () => fromGroup(n) }, "◫ Group") : "",
           b ? el("button", { title: "Unbind", onclick: () => { edit(() => { delete d.bindings[n]; }); renderValuesPane(); } }, "✕") : ""));
     });
     const auto = !ha.available && names.length ? el("details", {}, el("summary", {}, "Example automation (publish the values yourself)"),
       el("pre", { cls: "scr-file" }, exampleAutomation(names))) : "";
     const notes = d.notes ? el("details", {}, el("summary", {}, "Where these values come from (example notes)"), el("pre", { cls: "scr-file" }, d.notes)) : "";
+    if (groupOf()) {
+      const pick = el("select", { title: "Which member the preview shows (Live mode)" }, ...members.map(m => el("option", { value: m.id }, m.name)));
+      pick.value = previewMember || "";
+      pick.addEventListener("change", async () => { previewMember = pick.value; await loadMemberAttrs(); mode = "live"; $("#scrMode").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.m === "live")); refreshLive(); });
+      head.push(el("div", { cls: "row wrap grouppick" }, el("span", { cls: "small" }, `Group: ${members.length} member${members.length === 1 ? "" : "s"}. Preview`),
+        members.length ? pick : el("span", { cls: "muted small" }, "(none yet: check the Group settings in the Screen tab)")));
+    }
     pane.replaceChildren(...head, el("div", { cls: "valrows" }, ...(rows.length ? rows : [el("p", { cls: "muted small" }, "No values yet. Insert one in a text, or bind an entity.")])), notes, auto);
   }
   function exampleAutomation(names) {
@@ -900,12 +980,12 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
   }
 
   /* ================================================================ Home Assistant / live preview / live on display */
-  async function refreshHA() { try { ha = await api("/ha/status"); } catch (e) { ha = { available: false }; } if (st) renderValuesPane(); }
+  async function refreshHA() { try { ha = await api("/ha/status"); } catch (e) { ha = { available: false }; } if (st) { renderValuesPane(); if (groupOf() && !members.length) loadMembers(); } }
   async function refreshLive() {
     if (!st || mode !== "live") return;
     const b = doc().bindings;
     if (!Object.keys(b).length) { live = {}; liveErr = ""; dirty = true; return; }
-    try { live = await postJSON("/ha/values", { bindings: b }); liveErr = ""; } catch (e) { liveErr = e.message; }
+    try { live = await postJSON("/ha/values", { bindings: b, member: previewMember }); liveErr = ""; } catch (e) { liveErr = e.message; }
     dirty = true; if (!$("#scrPaneValues").classList.contains("hidden")) renderValuesPane();
   }
   setInterval(refreshLive, 2000);
