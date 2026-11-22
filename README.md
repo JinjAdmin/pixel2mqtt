@@ -6,6 +6,23 @@ number of displays to your MQTT broker and Home Assistant, and gives you a web e
 
 <img src="docs/img/screen-editor.png" alt="Screen editor: a 3D printer screen at 56 % with the print name, a printer drawing, a progress bar, time left and layers" width="900">
 
+## Contents
+
+- [What it does](#what-it-does)
+  - [More screenshots](#more-screenshots)
+- [Installation](#installation)
+  - [Requirements](#requirements)
+  - [Home Assistant OS: install as an app (add-on)](#home-assistant-os-install-as-an-app-add-on)
+  - [Docker](#docker)
+  - [Without Docker](#without-docker)
+  - [Adopt a display](#adopt-a-display)
+- [Reference](#reference)
+  - [Configuration](#configuration)
+  - [MQTT topics](#mqtt-topics)
+  - [How it works](#how-it-works)
+  - [Tests](#tests)
+- [Artwork and licence](#artwork-and-licence)
+
 ## What it does
 
 - **Home Assistant bridge.** Every display shows up in Home Assistant through MQTT discovery, with one MQTT login

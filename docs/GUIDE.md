@@ -4,11 +4,30 @@ How to make info screens, animations and icons for the 52×32 display, and how t
 To install pixel2mqtt, see the [README](../README.md). Inside pixel2mqtt, the **?** button at the top right opens
 this guide in a side drawer.
 
-**Contents:** [Getting started](#getting-started) · [Screens](#screens) ([editor](#the-screen-editor-at-a-glance),
-[elements](#elements), [text](#text-and-values), [sources](#sources-binds), [showing and hiding](#showing-and-hiding),
-[templates](#template-screens-groups), [exposed settings](#exposed-settings-controls),
-[sending](#sending-and-the-rotation)) · [Animations and icons](#animations-and-icons) ·
-[Playlists](#playlists-and-the-info-rotation) · [Reference](#reference)
+## Contents
+
+- [Getting started](#getting-started)
+- [Screens](#screens)
+  - [The screen editor at a glance](#the-screen-editor-at-a-glance)
+  - [Elements](#elements)
+  - [Text and values](#text-and-values)
+  - [Sources (binds)](#sources-binds)
+  - [Showing and hiding](#showing-and-hiding)
+  - [Template screens (groups)](#template-screens-groups)
+  - [Exposed settings (controls)](#exposed-settings-controls)
+  - [Sending and the rotation](#sending-and-the-rotation)
+- [Animations and icons](#animations-and-icons)
+  - [Built-in artwork and Govee app scenes](#built-in-artwork-and-govee-app-scenes)
+  - [Tools](#tools)
+  - [Layers](#layers)
+  - [Frames and loops](#frames-and-loops)
+  - [Icons](#icons)
+  - [Testing on the display](#testing-on-the-display)
+- [Playlists and the Info rotation](#playlists-and-the-info-rotation)
+- [Reference](#reference)
+  - [Shortcuts](#shortcuts)
+  - [MQTT for exposed settings](#mqtt-for-exposed-settings)
+  - [Worked example: Ringworld](#worked-example-ringworld)
 
 ## Getting started
 
