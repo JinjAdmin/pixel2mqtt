@@ -43,9 +43,9 @@ with a sample for the preview.
 
 <img src="docs/img/sources.png" alt="Sources tab: printer values bound to sensor states and an attribute, each with a sample" width="330">
 
-**Animation editor**: layers, frames, motion and opacity, with the colour palette and scene controls on the right.
+**Animation editor**: "Aspen Ride", six layers (a sky; mountains, aspen grove, trail and foreground scrolling at their own speeds; a 78-frame biker), with the frame strip below and the layer settings on the right.
 
-<img src="docs/screenshots/editor.png" alt="pixel2mqtt editor with a pixel-art smiley on the 52x32 canvas" width="900">
+<img src="docs/img/anim-editor.png" alt="Animation editor: a mountain biker on a trail through yellow aspens, with the Layers card, the Biker layer's 78 frames and its layer settings" width="900">
 
 **Library**: each display's animations and sounds; play, open in the editor, rename (Aa) or delete.
 **Displays**: adopted displays, network discovery and the bridge status.
