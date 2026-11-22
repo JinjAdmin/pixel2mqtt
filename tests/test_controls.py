@@ -159,6 +159,27 @@ with tempfile.TemporaryDirectory() as tmp:
     b.set_control("d1", "Market chart", "value.m.spark.hours", "7d")
     ok("'7d' -> 168 hours, state '7d'", b.screens("d1")["Market chart"]["m.spark"]["hours"] == 168 and mq.pub[st_t] == "7d")
     ok("parse_hours", [ctl.parse_hours(x) for x in ("12h", "3d", "36", "0", "x", "1.5h")] == [12, 72, 36, None, None, 1.5])
+    # a slow history fetch (720 h from statistics) must not block the MQTT thread; quick commands collapse
+    fetched, real_hist = [], ha.history
+
+    def slow(eid, hours, points, attr=None):
+        fetched.append(hours)
+        time.sleep(1.0)
+        return [float(hours)] * 3
+    ha.history = slow
+    b.hist.clear()
+    t0 = time.time()
+    for opt in ("30d", "3d", "1h", "6h"):   # as if picked quickly in HA, each on the MQTT thread
+        b.set_control("d1", "Market chart", "value.m.spark.hours", opt)
+    ok("commands return at once (no fetch on the caller's thread)", time.time() - t0 < 0.2, time.time() - t0)
+    ok("state published right away", mq.pub[st_t] == "6h")
+    time.sleep(2.8)
+    ok("only the first (already running) and the latest window were fetched", fetched == [720, 6], fetched)
+    t0 = time.time()
+    b.select("d1", "Market chart", "BTC")
+    ok("group member select doesn't block either", time.time() - t0 < 0.2, time.time() - t0)
+    time.sleep(1.5)
+    ha.history = real_hist
     b.rename_screen("d1", "Market chart", "Markets")
     ok("rename moves the entities", mq.pub.get("homeassistant/select/p2m_d1/grp_market_chart/config") == "" and "homeassistant/select/p2m_d1/grp_markets/config" in mq.pub
        and mq.pub.get("homeassistant/number/p2m_d1/scr_market_chart_value_m_spark_hours/config") == "" and b.controls("d1", "Markets"))

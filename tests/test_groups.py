@@ -94,7 +94,7 @@ with tempfile.TemporaryDirectory() as tmp:
     ok("first member's whole set in one message", first == {"market.symbol": "BTC", "market.price": [58298.52, "USD"], "market.change": -5.82,
                                                           "market.spark": [1.0, 2.0, 3.0], "market.prefix": "$", "market.crypto": 1}, first)
     n = len(disp.sent)
-    time.sleep(2.6)
+    time.sleep(3.6)
     nxt = [m for m in disp.sent[n:] if "market.symbol" in m]
     ok("Rotate moves to the next member, all values together", nxt and nxt[0].get("market.symbol") == "ETH" and len(nxt[0]) == 6, nxt[:1])
     # pick one in HA (the select's command topic)

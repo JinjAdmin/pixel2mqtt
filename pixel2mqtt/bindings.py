@@ -256,6 +256,7 @@ class Bindings:
         self._full_at = {}               # display id -> time of the last full resend
         self.gidx, self.gnext = {}, {}   # (display, screen) -> rotation index / time of the next step
         self._disc = {}                  # (display, screen) -> last discovery payloads published
+        self._jobs, self._jobs_lock, self._jobs_ev = {}, threading.Lock(), threading.Event()   # slow work, off the MQTT thread
 
     # ------------------------------------------------------------------ store
     def _save(self):
@@ -427,7 +428,7 @@ class Bindings:
             self._save()
         self.gnext[(dev_id, screen)] = time.time() + g["rotate"]
         self._publish_state(dev_id, screen)
-        self.refresh_screen(dev_id, screen)
+        self.later(("member", dev_id, screen), lambda: self.refresh_screen(dev_id, screen))
 
     def set_rotate(self, dev_id, screen, secs):
         g = self.groups(dev_id).get(screen)
@@ -456,7 +457,7 @@ class Bindings:
                 if now >= self.gnext[k]:
                     self.gidx[k] = self.gidx.get(k, 0) + 1
                     self.gnext[k] = now + g["rotate"]
-                    self.refresh_screen(dev_id, screen)
+                    self.later(("member", dev_id, screen), lambda d=dev_id, s=screen: self.refresh_screen(d, s))
 
     # ------------------------------------------------------------------ HA controls (screen settings as HA entities)
     def controls(self, dev_id, screen=None):
@@ -495,19 +496,43 @@ class Bindings:
         self._publish_state(dev_id, screen)
         if param.startswith("value."):
             name = param[6:-6]
-            self.refresh(dev_id, force=True, screens={screen}, only=lambda s, e: s is self.screens(dev_id)[screen].get(name))
-        elif upload:
-            d = self.mgr.displays.get(dev_id)
-            if d is not None and scr.startswith("PXS1"):
-                threading.Thread(target=self._upload, args=(d, screen, scr), daemon=True).start()
+            self.later(("refresh", dev_id, screen, name),
+                       lambda: self.refresh(dev_id, force=True, screens={screen}, only=lambda s, e: s is self.screens(dev_id).get(screen, {}).get(name)))
+        elif upload and scr.startswith("PXS1"):
+            self.later(("upload", dev_id, screen), lambda: self._upload(dev_id, screen))
         return True
 
-    @staticmethod
-    def _upload(d, screen, scr):
+    def _upload(self, dev_id, screen):
+        d, scr = self.mgr.displays.get(dev_id), self.controls(dev_id).get(screen, {}).get("scr", "")
+        if d is None or not scr.startswith("PXS1"):
+            return
         try:
-            d.api.put_file("screens", screen + ".scr", scr.encode("utf-8"))
+            d.api.put_file("screens", screen + ".scr", scr.encode("utf-8"))   # the latest text, however many commands came in
         except Exception as e:  # noqa: BLE001
-            log.warning("%s: could not send %s: %s", d.name if hasattr(d, "name") else d.id, screen, e)
+            log.warning("%s: could not send %s: %s", getattr(d, "name", dev_id), screen, e)
+
+    # ------------------------------------------------------------------ worker (never block the MQTT thread)
+    def later(self, key, fn):
+        """Run fn on the worker thread. A job with the same key still waiting is replaced (the latest command wins)."""
+        with self._jobs_lock:
+            self._jobs.pop(key, None)
+            self._jobs[key] = fn
+        self._jobs_ev.set()
+
+    def _job_loop(self):
+        while not self._stop.is_set():
+            self._jobs_ev.wait(1.0)
+            while True:
+                with self._jobs_lock:
+                    if not self._jobs:
+                        self._jobs_ev.clear()
+                        break
+                    key = next(iter(self._jobs))
+                    fn = self._jobs.pop(key)
+                try:
+                    fn()
+                except Exception:  # noqa: BLE001
+                    log.exception("job %s failed", key[:3])
 
     def _entities(self, d, screen):
         """Every HA entity of a screen: [(config topic, config, state topic, state, command topic)].
@@ -678,18 +703,21 @@ class Bindings:
         if not self.ha.connected and any(self._needs_ha(s) for s in self.active(dev_id).values()):
             return   # without HA only fixed values can be computed; wait (an HA reconnect resends everything)
         with self.lock:
-            sent, p = self.sent.setdefault(dev_id, {}), self.pending.setdefault(dev_id, {})
+            todo = []
             for screen, b in list(self.screens(dev_id).items()):
                 if screens is not None and screen not in screens:
                     continue
                 member = self.current(dev_id, screen) if screen in self.groups(dev_id) else None
-                for name, spec in b.items():
+                for name, spec in list(b.items()):
                     ent = member if spec.get("kind") == "group" else spec.get("entity")
-                    if only is not None and not only(spec, ent):
-                        continue
-                    v = self.compute(spec, entity=ent)
-                    if force or sent.get(name, UNSET) != v:
-                        p[name] = v
+                    if only is None or only(spec, ent):
+                        todo.append((name, dict(spec), ent))
+        vals = [(name, self.compute(spec, entity=ent)) for name, spec, ent in todo]   # may fetch history: no lock held
+        with self.lock:
+            sent, p = self.sent.setdefault(dev_id, {}), self.pending.setdefault(dev_id, {})
+            for name, v in vals:
+                if force or sent.get(name, UNSET) != v:
+                    p[name] = v
 
     def refresh_screen(self, dev_id, screen):
         """A group's member changed: send all of that screen's group values together."""
@@ -709,6 +737,7 @@ class Bindings:
             self.ha.on_registry = []
         self.ha.on_registry.append(self.publish_groups)
         threading.Thread(target=self._flush_loop, name="values", daemon=True).start()
+        threading.Thread(target=self._job_loop, name="bindings-jobs", daemon=True).start()
         threading.Thread(target=self._history_loop, name="history", daemon=True).start()
 
     def stop(self):
