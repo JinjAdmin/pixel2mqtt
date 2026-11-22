@@ -645,16 +645,20 @@ const Screens = (() => {
       el("button", { cls: "small", title: "The first rule that's true picks the colour; otherwise the colour above", onclick: () => { edit(() => c.rules.push({ name: "", op: ">", lit: "0", color: "#28dc50" })); render(); } }, "+ Add colour rule"));
     render(); return wrap;
   }
-  function fontPicker(e) {   // each font drawn in its own pixels
+  function fontPicker(e) {   // each font drawn as LEDs (3 px each, 1 px gap): Big and Huge show their 2x2 / 3x3 LED blocks
+    const S = 3;
     return el("div", { cls: "fontpick" }, ...["tiny", "small", "big", "huge"].map(f => {
-      const sample = "Ag4", w = R.textWidth(f === "tiny" ? "AG4" : sample, f), h = R.FONTS[f].gh, c = el("canvas", { width: w, height: h });
+      const text = f === "tiny" ? "AG" : "Ag", w = R.textWidth(text, f), h = R.FONTS[f].gh;
       const fb = R.render(R.parse(`PXS1
-text 0 0 font=${f} "${f === "tiny" ? "AG4" : sample}"
+text 0 0 font=${f} "${text}"
 `, "font"), { values: {} });
-      const img = c.getContext("2d").createImageData(w, h);
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const s = (y * 52 + x) * 3, d = (y * w + x) * 4; img.data[d] = fb[s]; img.data[d + 1] = fb[s + 1]; img.data[d + 2] = fb[s + 2]; img.data[d + 3] = 255; }
-      c.getContext("2d").putImageData(img, 0, 0);
-      c.style.width = w * 2 + "px"; c.style.height = h * 2 + "px";   // the same 2 px per LED for every font
+      const c = el("canvas", { width: w * S, height: h * S }), g = c.getContext("2d");
+      g.fillStyle = "#000"; g.fillRect(0, 0, w * S, h * S);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (y * 52 + x) * 3, lit = fb[i] | fb[i + 1] | fb[i + 2];
+        g.fillStyle = lit ? `rgb(${fb[i]},${fb[i + 1]},${fb[i + 2]})` : "#161616";
+        g.fillRect(x * S, y * S, S - 1, S - 1);
+      }
       return el("button", { cls: e.font === f ? "on" : "", title: FONT_LABEL[f], onclick: () => { edit(() => { e.font = f; }); renderInspector(); } }, c, el("span", { cls: "small" }, FONT_LABEL[f]));
     }));
   }
