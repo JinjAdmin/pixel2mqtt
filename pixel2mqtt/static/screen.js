@@ -647,14 +647,14 @@ const Screens = (() => {
   }
   function fontPicker(e) {   // each font drawn in its own pixels
     return el("div", { cls: "fontpick" }, ...["tiny", "small", "big", "huge"].map(f => {
-      const sample = "Ag42", w = R.textWidth(f === "tiny" ? "AG42" : sample, f), h = R.FONTS[f].gh, c = el("canvas", { width: w, height: h });
+      const sample = "Ag4", w = R.textWidth(f === "tiny" ? "AG4" : sample, f), h = R.FONTS[f].gh, c = el("canvas", { width: w, height: h });
       const fb = R.render(R.parse(`PXS1
-text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
+text 0 0 font=${f} "${f === "tiny" ? "AG4" : sample}"
 `, "font"), { values: {} });
       const img = c.getContext("2d").createImageData(w, h);
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const s = (y * 52 + x) * 3, d = (y * w + x) * 4; img.data[d] = fb[s]; img.data[d + 1] = fb[s + 1]; img.data[d + 2] = fb[s + 2]; img.data[d + 3] = 255; }
       c.getContext("2d").putImageData(img, 0, 0);
-      c.style.height = Math.min(42, h * 2) + "px";
+      c.style.width = w * 2 + "px"; c.style.height = h * 2 + "px";   // the same 2 px per LED for every font
       return el("button", { cls: e.font === f ? "on" : "", title: FONT_LABEL[f], onclick: () => { edit(() => { e.font = f; }); renderInspector(); } }, c, el("span", { cls: "small" }, FONT_LABEL[f]));
     }));
   }
