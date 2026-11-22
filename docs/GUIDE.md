@@ -172,7 +172,7 @@ Start one with **+ New screen**, or **From example…** (Today, Forecast, 3D pri
 - Text is a **template**: `{printer.progress|int}%` shows a value run through formatters. **+ Insert value** picks
   one, and the chips add formatters: Integer, Decimals, Thousands, %, Duration, Temperature, Time, Ago, Upper and
   Fallback. The result shows underneath as you type.
-- **Values** lists every value the screen uses. **Bind** connects one to a Home Assistant entity: its state, one of
+- **Sources** lists every value the screen uses. **Bind** connects one to a Home Assistant entity: its state, one of
   its attributes, or its **history** (for sparklines). A weather entity also offers its **forecast**: now (this hour), today, tonight or up to three days ahead, as temperature, high, low, condition or day name, with the temperature unit attached. The entity picker searches names, ids, devices, areas and
   integrations (words in any order), or browses Area → Device → Entity. Each value also has a **sample**, so you can
   try states like `finish` without waiting for a real print. **Sample / Live** at the top switches the preview
@@ -185,16 +185,16 @@ Start one with **+ New screen**, or **From example…** (Today, Forecast, 3D pri
 
 **Template screens (groups).** One screen can show any of several similar entities, such as every stock ticker. In
 **Screen**, turn on **Group** and pick the members: every entity of an integration (e.g. `easy_stock`), a label, a
-device, an entity type or a list. Then, in **Values**, take each value from the group with **◫ Group** (state, an
+device, an entity type or a list. Then, in **Sources**, take each value from the group with **◫ Group** (state, an
 attribute or history, with display forms such as *Short symbol* `^GSPC → S&P`). The member picker at the top of
-Values previews any member. After **Send to display**, Home Assistant gets a dropdown with every member plus
+Sources previews any member. After **Send to display**, Home Assistant gets a dropdown with every member plus
 **Rotate**, and a number for the rotate time. Rotate steps through the members every N seconds, all of a member's
 values change together, and new members (a new ticker in Easy Stock) appear in the dropdown by themselves.
 
-**Home Assistant controls.** Any screen setting can become an entity on the display's device in Home Assistant. Tick it
-under **Control from Home Assistant**: element settings (font, alignment, colour, blink, a bar's range, a sparkline's
-shading, ...) are in the element's panel, and screen settings (time on screen, order, background, stale after, and
-each sparkline's history window) are in **Screen**. Each control has a name (default "<screen> <setting>", e.g.
+**Home Assistant controls.** Any screen setting can become an entity on the display's device in Home Assistant. Click the
+⌂ at the right of its label (**Expose to Home Assistant**): element settings (font, alignment, colour, blink, a bar's
+range, a sparkline's shading and history window, ...) are in the element's panel, and screen settings (time on screen,
+order, background, stale after) are in **Screen**. **Screen ▸ Exposed to HA** lists every entity the screen creates. Each control has a name (default "<screen> <setting>", e.g.
 *Market chart history*) and a type: a number (min, max, step, unit), a dropdown (options, comma-separated), a switch
 or text. A history window is a dropdown by default (1h, 6h, 24h, 3d, 7d, 30d; options like `12h` or `7d` are converted to
 hours), and a sparkline's panel links to it. After **Send to display**, a change in Home Assistant is checked against that range or list, saved, and on
@@ -207,7 +207,7 @@ MQTT: discovery under `<prefix>/<number|select|switch|text>/<display>/scr_<scree
 renaming a screen makes new entities.
 
 Home Assistant access is automatic in the add-on. In Docker, set `HA_URL` and `HA_TOKEN_FILE` (see the README).
-Without it, values are plain names: publish them yourself to `<topic>/values/set`, and the Values tab shows an
+Without it, values are plain names: publish them yourself to `<topic>/values/set`, and the Sources tab shows an
 example automation.
 
 ## Testing on the display
