@@ -41,7 +41,7 @@ add-on follows releases.
 
 ## Your first screen
 
-![The screen editor with the Ticker example](img/screen-editor.png)
+![The screen editor with the 3D printer example, mid-print](img/screen-editor.png)
 
 A **screen** is an info screen in the display's Info rotation: text, values from Home Assistant, icons, progress
 bars, sparklines and shapes. pixel2mqtt sends the values whenever they change, so the display stays current.

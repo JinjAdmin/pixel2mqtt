@@ -33,10 +33,10 @@ broker and Home Assistant for any number of displays. You get:
 screens, exposing settings, animations, icons and playlists.
 
 ### Screenshots
-**Screen editor**: the Ticker example with sample values. Elements on the left, the 52×32 preview in the middle,
-the selected sparkline's settings on the right (its history window is exposed to Home Assistant).
+**Screen editor**: the 3D printer example mid-print, with sample values. Elements on the left, the 52×32 preview in
+the middle (the print head rises as the part grows), the selected element's settings on the right.
 
-<img src="docs/img/screen-editor.png" alt="Screen editor: a stock ticker screen with a coin badge, price, change and sparkline" width="900">
+<img src="docs/img/screen-editor.png" alt="Screen editor: a 3D printer screen at 56 % with the print name, a printer drawing, a progress bar, time left and layers" width="900">
 
 **Sources**: each value the screen uses, bound to Home Assistant (here, to the current member of a group of tickers),
 with a sample for the preview.
