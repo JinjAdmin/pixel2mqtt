@@ -5,6 +5,7 @@ const PW = 52, PH = 32, FRAME = PW * PH * 3;
 // LEDs as the panel shows them: square dots with a black gap, unlit (black) LEDs very dark grey. Below 3 px per LED
 // there's no room for a gap, so plain pixels. px: RGB (stride 3) or RGBA (stride 4), w x h LEDs, s px per LED.
 const LED_OFF = 22;   // #161616
+const ledGap = s => Math.max(1, Math.round(s / 5));   // the black gap: about a fifth of the LED pitch
 function drawLEDs(g, px, stride, w, h, s, x0 = 0, y0 = 0) {
   if (s < 3) {
     const img = new ImageData(w, h);
@@ -12,10 +13,11 @@ function drawLEDs(g, px, stride, w, h, s, x0 = 0, y0 = 0) {
     return g.putImageData(img, x0, y0);
   }
   g.fillStyle = "#000"; g.fillRect(x0, y0, w * s, h * s);
+  const d = s - ledGap(s);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = (y * w + x) * stride, r = px[i], gg = px[i + 1], b = px[i + 2];
     g.fillStyle = r || gg || b ? `rgb(${r},${gg},${b})` : "#161616";
-    g.fillRect(x0 + x * s, y0 + y * s, s - 1, s - 1);
+    g.fillRect(x0 + x * s, y0 + y * s, d, d);
   }
 }
 const PREV_S = 4;   // Library previews: 208 x 128

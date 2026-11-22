@@ -660,7 +660,7 @@ text 0 0 font=${f} "${text}"
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
         const i = (y * 52 + x) * 3, lit = fb[i] | fb[i + 1] | fb[i + 2];
         g.fillStyle = lit ? `rgb(${fb[i]},${fb[i + 1]},${fb[i + 2]})` : "#161616";
-        g.fillRect(x * S, y * S, S - 1, S - 1);
+        g.fillRect(x * S, y * S, S - ledGap(S), S - ledGap(S));
       }
       return el("button", { cls: e.font === f ? "on" : "", title: FONT_LABEL[f], onclick: () => { edit(() => { e.font = f; }); renderInspector(); } }, c, el("span", { cls: "small" }, FONT_LABEL[f]));
     }));

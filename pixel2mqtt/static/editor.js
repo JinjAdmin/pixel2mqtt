@@ -168,10 +168,10 @@ const Editor = (() => {
       forEachLayerPixel(l, prev, lx, ly, (x, y, s) => { if (prev.rgba[s + 3]) { g.fillStyle = `rgb(${prev.rgba[s]},${prev.rgba[s + 1]},${prev.rgba[s + 2]})`; g.fillRect(x * cell, y * cell, cell, cell); } });
       g.globalAlpha = 1;
     }
-    if (cell >= 3) {   // LED dots: a 1-px black gap at the right and bottom of every cell (it doubles as the painting grid)
-      g.fillStyle = "#000";
-      for (let x = V.x + 1; x <= V.x + V.w; x++) g.fillRect(x * cell - 1, V.y * cell, 1, V.h * cell);
-      for (let y = V.y + 1; y <= V.y + V.h; y++) g.fillRect(V.x * cell, y * cell - 1, V.w * cell, 1);
+    if (cell >= 3) {   // LED dots: a black gap (ledGap, about a fifth of a cell) at the right and bottom of every cell; it doubles as the painting grid
+      g.fillStyle = "#000"; const gp = ledGap(cell);
+      for (let x = V.x + 1; x <= V.x + V.w; x++) g.fillRect(x * cell - gp, V.y * cell, gp, V.h * cell);
+      for (let y = V.y + 1; y <= V.y + V.h; y++) g.fillRect(V.x * cell, y * cell - gp, V.w * cell, gp);
     }
     g.strokeStyle = "rgba(255,255,255,.85)"; g.lineWidth = 2; g.strokeRect(-1, -1, sc.w * cell + 2, sc.h * cell + 2);   // the panel
     if (!playing && !l.tile) {  // selected layer bounds
