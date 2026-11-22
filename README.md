@@ -33,7 +33,7 @@ broker and Home Assistant for any number of displays. You get:
 screens, exposing settings, animations, icons and playlists.
 
 ### Screenshots
-**Screen editor**: the 3D printer example mid-print (56 %, layer 96 of 180), with sample values. Elements on the left, the 52×32 preview in
+**Screen editor**: the 3D printer example mid-print (56 %, layer 118 of 210), with sample values. Elements on the left, the 52×32 preview in
 the middle (the print head rises as the part grows), the selected element's settings on the right.
 
 <img src="docs/img/screen-editor.png" alt="Screen editor: a 3D printer screen at 56 % with the print name, a printer drawing, a progress bar, time left and layers" width="900">

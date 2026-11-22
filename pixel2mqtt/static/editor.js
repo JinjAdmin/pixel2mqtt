@@ -144,7 +144,7 @@ const Editor = (() => {
     for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) {
       const i = (y * V.w + x) * 4, wx = V.x + x, wy = V.y + y, inP = inPanel(wx, wy), chk = (wx + wy) & 1;
       if (inP) {
-        if (c[i + 3]) { px[i] = c[i]; px[i + 1] = c[i + 1]; px[i + 2] = c[i + 2]; }
+        if (c[i + 3]) { const off = !(c[i] || c[i + 1] || c[i + 2]) && cell >= 3; px[i] = off ? LED_OFF : c[i]; px[i + 1] = off ? LED_OFF : c[i + 1]; px[i + 2] = off ? LED_OFF : c[i + 2]; }   // unlit LEDs: dark grey
         else { const v = chk ? 42 : 29; px[i] = px[i + 1] = px[i + 2] = v; }
       } else {
         let r, gg, b;
@@ -168,11 +168,10 @@ const Editor = (() => {
       forEachLayerPixel(l, prev, lx, ly, (x, y, s) => { if (prev.rgba[s + 3]) { g.fillStyle = `rgb(${prev.rgba[s]},${prev.rgba[s + 1]},${prev.rgba[s + 2]})`; g.fillRect(x * cell, y * cell, cell, cell); } });
       g.globalAlpha = 1;
     }
-    if (cell >= 8) {
-      g.strokeStyle = "rgba(255,255,255,0.07)"; g.lineWidth = 1; g.beginPath();
-      for (let x = V.x + 1; x < V.x + V.w; x++) { g.moveTo(x * cell + .5, V.y * cell); g.lineTo(x * cell + .5, (V.y + V.h) * cell); }
-      for (let y = V.y + 1; y < V.y + V.h; y++) { g.moveTo(V.x * cell, y * cell + .5); g.lineTo((V.x + V.w) * cell, y * cell + .5); }
-      g.stroke();
+    if (cell >= 3) {   // LED dots: a 1-px black gap at the right and bottom of every cell (it doubles as the painting grid)
+      g.fillStyle = "#000";
+      for (let x = V.x + 1; x <= V.x + V.w; x++) g.fillRect(x * cell - 1, V.y * cell, 1, V.h * cell);
+      for (let y = V.y + 1; y <= V.y + V.h; y++) g.fillRect(V.x * cell, y * cell - 1, V.w * cell, 1);
     }
     g.strokeStyle = "rgba(255,255,255,.85)"; g.lineWidth = 2; g.strokeRect(-1, -1, sc.w * cell + 2, sc.h * cell + 2);   // the panel
     if (!playing && !l.tile) {  // selected layer bounds

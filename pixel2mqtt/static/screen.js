@@ -3,7 +3,8 @@
 // The preview is always render(parse(compile(project))), so what the canvas shows is exactly what is sent.
 // Uses screenrender.js (ScreenRender) and app.js helpers (api, el, toast, ask, askText, cur, lib, getIcon, ...).
 const Screens = (() => {
-  const R = ScreenRender, S = 16;               // canvas cell size (px)
+  const R = ScreenRender;
+  let S = 16;   // canvas px per LED: follows the canvas's on-screen size, so the LED gaps stay crisp (fitCanvas)
   const BUILTIN = new Set(["time", "date", "weekday", "month", "day", "hour", "minute", "second"]);
   const OPS = ["==", "!=", "<", ">", "<=", ">=", "in", "set", "has", "fresh"];
   const OP_LABEL = { set: "is set", has: "has a value", fresh: "is fresh" };   // set: a bare name (exists and isn't 0/off/false/empty)
@@ -288,6 +289,14 @@ const Screens = (() => {
     </div>
   </div>`;
   const cv = $("#scrCv"), g = cv.getContext("2d");
+  function fitCanvas() {   // draw at the real resolution: S whole device px per LED, the canvas exactly 52 x S wide
+    const dpr = window.devicePixelRatio || 1, avail = Math.min(cv.parentElement.clientWidth - 16, 832);
+    if (avail <= 0) return;
+    const s = Math.max(3, Math.min(32, Math.floor(avail * dpr / 52)));
+    if (s !== S || cv.width !== 52 * s) { S = s; cv.width = 52 * S; cv.height = 32 * S; dirty = true; }
+    cv.style.width = 52 * S / dpr + "px";
+  }
+  new ResizeObserver(fitCanvas).observe(cv.parentElement);
   const PALETTE = [["text", "Text", "T"], ["value", "Value", "{x}"], ["icon", "Icon", "◆"], ["iconmap", "Icon by value", "◆?"],
     ["bar", "Progress bar", "▬"], ["spark", "Sparkline", "∿"], ["rect", "Rectangle", "▭"], ["line", "Line", "╱"]];
   $("#scrPalette").replaceChildren(...PALETTE.map(([k, label, glyph]) => {
@@ -395,13 +404,7 @@ const Screens = (() => {
     if (!st) return;
     const c = ctx(), fb = parsed ? R.render(parsed, c) : new Uint8ClampedArray(52 * 32 * 3);
     st.lastFrame = fb;
-    for (let y = 0; y < 32; y++) for (let x = 0; x < 52; x++) {
-      const i = (y * 52 + x) * 3; g.fillStyle = `rgb(${fb[i]},${fb[i + 1]},${fb[i + 2]})`; g.fillRect(x * S, y * S, S, S);
-    }
-    g.strokeStyle = "rgba(255,255,255,.06)"; g.lineWidth = 1; g.beginPath();
-    for (let x = 1; x < 52; x++) { g.moveTo(x * S + .5, 0); g.lineTo(x * S + .5, 32 * S); }
-    for (let y = 1; y < 32; y++) { g.moveTo(0, y * S + .5); g.lineTo(52 * S, y * S + .5); }
-    g.stroke();
+    drawLEDs(g, fb, 3, 52, 32, S);   // dots, like the panel
     for (const gd of guides) { g.strokeStyle = "#ff3dbb"; g.lineWidth = 1; g.beginPath(); if (gd.x !== undefined) { g.moveTo(gd.x * S + .5, 0); g.lineTo(gd.x * S + .5, 32 * S); } else { g.moveTo(0, gd.y * S + .5); g.lineTo(52 * S, gd.y * S + .5); } g.stroke(); }
     const e = sel();
     if (e && !e.hidden) {
