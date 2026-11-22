@@ -23,7 +23,7 @@ this guide in a side drawer.
   - [Frames and loops](#frames-and-loops)
   - [Icons](#icons)
   - [Testing on the display](#testing-on-the-display)
-- [Playlists and the Info rotation](#playlists-and-the-info-rotation)
+- [Playlists and the screen rotation](#playlists-and-the-screen-rotation)
 - [Reference](#reference)
   - [Shortcuts](#shortcuts)
   - [MQTT for exposed settings](#mqtt-for-exposed-settings)
@@ -55,13 +55,13 @@ The status next to the project's name says where it stands:
 Click the project's name to rename it. The **⋮** menu has duplicate, export (`.pixel2mqtt.json`, PNG) and delete.
 **◂ Projects** saves and goes back.
 
-**Docker image tags.** `:latest` is the newest release, `:0.4` or `:0.4.3` pin a version, `:edge` follows the main
+**Docker image tags.** `:latest` is the newest release, `:0.5` or `:0.5.0` pin a version, `:edge` follows the main
 branch (finished but not yet released) and `:beta` is the most recently pushed feature branch (experimental). The
 add-on follows releases.
 
 ## Screens
 
-A **screen** is an info screen in the display's Info rotation: text, Home Assistant values, icons, bars, sparklines
+A **screen** is an info screen in the display's screen rotation: text, Home Assistant values, icons, bars, sparklines
 and shapes. pixel2mqtt sends new values whenever they change. Screens need pixeld-h6631 with screen support.
 
 > **Binds vs exposed settings.** A **bind** (the Sources tab) brings data *from* Home Assistant *into* the screen,
@@ -210,16 +210,16 @@ longer chart window at night.
 
 ### Sending and the rotation
 
-Nothing reaches the display until you send it. Once sent, a screen joins the display's Info rotation and keeps
+Nothing reaches the display until you send it. Once sent, a screen joins the display's screen rotation and keeps
 updating on its own; pixel2mqtt doesn't need the editor open.
 
 - **Send to display** uploads the screen and starts its binds (values batched about once a second, resent every
   10 minutes and when the display restarts). **Remove from display** takes it off.
 - **Screen ▸ On the display as** is the name in Home Assistant's *Screen* select and in playlists. **Rename**
   changes it; the project name is separate.
-- **Screen ▸ Basics**: **Time on screen** (blank = the display's *Info rotate*), **Order** in the rotation
+- **Screen ▸ Basics**: **Time on screen** (blank = the display's *Screen rotate seconds*), **Order** in the rotation
   (lower first) and **Background**.
-- How screens take turns: see [Playlists and the Info rotation](#playlists-and-the-info-rotation).
+- How screens take turns: see [Playlists and the screen rotation](#playlists-and-the-screen-rotation).
 
 ## Animations and icons
 
@@ -322,17 +322,17 @@ With a display adopted:
 - **Test on the display** plays any animation or music style straight away, without touching your project.
 - **+ From display** grabs the panel's current frame as a layer.
 
-## Playlists and the Info rotation
+## Playlists and the screen rotation
 
 The display can run one thing (a clock, an animation, the screen rotation) or a **playlist** that switches between
 several on a timer.
 
-- In **Info** mode the display cycles through every screen whose *Needs*, *Show only when* and *Keep showing after*
-  allow it, in **order**, each for its **time on screen** (default: the display's *Info rotate* setting).
+- In **Screens** mode the display cycles through every screen whose *Needs*, *Show only when* and *Keep showing after*
+  allow it, in **order**, each for its **time on screen** (default: the display's *Screen rotate seconds* setting).
 - Home Assistant's **Screen** select pins one screen (*Auto* = the rotation). A pinned screen shows even when its
   rules say no.
 - In **Playlist** mode the display runs its *Playlist* setting: `kind[:arg]:seconds` items separated by commas,
-  e.g. `clock:30,info:40,animation:Moon:20,screen:Ticker:20`. `screen:<name>` uses the name from **On the display
+  e.g. `clock:30,screens:40,animation:Moon:20,screen:Ticker:20`. `screen:<name>` uses the name from **On the display
   as**. Set it from Home Assistant or with `<topic>/playlist/set`.
 
 ## Reference

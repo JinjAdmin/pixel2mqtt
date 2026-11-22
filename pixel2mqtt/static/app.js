@@ -194,13 +194,13 @@ function renderLibrary() {
     const name = stem(f.name), r = scrReport.find(x => x.file === f.name || x.name === name) || {};
     const miss = Array.isArray(r.missing) ? r.missing : String(r.missing || "").split(/\s+/).filter(Boolean);
     const state = r.errors && r.errors.length ? ["chip warn", `${r.errors.length} problem${r.errors.length > 1 ? "s" : ""}`, r.errors.map(e => `line ${e.line}: ${e.msg}`).join("\n")]
-      : r.visible ? ["chip ok", "showing", "In the Info rotation"] : miss.length ? ["chip draft", "waiting", "Waiting for " + miss.join(", ")] : r.name ? ["chip draft", "hidden", "Its Show when rule is false right now"] : null;
+      : r.visible ? ["chip ok", "showing", "In the screen rotation"] : miss.length ? ["chip draft", "waiting", "Waiting for " + miss.join(", ")] : r.name ? ["chip draft", "hidden", "Its Show when rule is false right now"] : null;
     const p = projectFor(name, "screen");
     return el("div", { cls: "item" },
       el("span", { cls: "n", title: "Preview with its current values", onclick: () => previewScreen(f) }, (r.name && r.name !== name ? `${r.name} (${name})` : name)),
       state ? el("span", { cls: state[0], title: state[2] }, state[1]) : "",
       el("span", { cls: "s" }, fmtBytes(f.size)),
-      el("button", { title: "Show it now (pins it in Info mode; Auto in HA's Screen select resumes the rotation)", onclick: () => cmd("screen", r.name || name) }, "▶"),
+      el("button", { title: "Show it now (pins it in Screens mode; Auto in HA's Screen select resumes the rotation)", onclick: () => cmd("screen", r.name || name) }, "▶"),
       el("button", { title: p ? `Open the project "${p.name}"` : "Open a copy in the screen editor", onclick: () => openScreen(f, p) }, "✎"),
       el("button", { title: "Rename (its value bindings follow)", onclick: () => renameFile("screens", f.name) }, "Aa"),
       el("button", { title: "Remove from the display (its value bindings stop)", onclick: () => removeScreen(name) }, "✕"));

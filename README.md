@@ -106,7 +106,7 @@ create a dedicated user (Mosquitto: `mosquitto_passwd /mosquitto/config/passwd p
 set `MQTT_USER` and `MQTT_PASSWORD`. On a bridge network the discovery broadcast can't reach the displays, so list
 them in `PIXEL_HOSTS`. The `docker-compose.yml` in this repository is a shorter version that reads `.env`.
 
-**Image tags:** `:latest` is the newest release; `:0.4` or `:0.4.3` pin a version; `:edge` follows the main branch
+**Image tags:** `:latest` is the newest release; `:0.5` or `:0.5.0` pin a version; `:edge` follows the main branch
 (finished, not yet released); `:beta` is the most recently pushed feature branch (experimental).
 
 ### Without Docker
@@ -163,7 +163,7 @@ The topics are pixeld's own, with the base replaced by the display's topic. Some
 | `<topic>/chime/set` | a sound name, optionally with a volume |
 | `<topic>/values/set` | JSON `{"name": value, ...}` for info screens (pixel2mqtt sends bound values itself) |
 | `<topic>/screen/set` | `Auto`, or an info screen's name to pin it |
-| `<topic>/playlist/set` | `kind[:arg]:secs,…`, e.g. `clock:30,info:40,screen:Ticker:20` |
+| `<topic>/playlist/set` | `kind[:arg]:secs,…`, e.g. `clock:30,screens:40,screen:Ticker:20` |
 | `<topic>/group/<screen>/select`, `…/rotate` | a template screen's member (or `Rotate`) and rotate seconds |
 | `<topic>/control/<screen>/<setting>/set` | an exposed screen setting (see the [guide](docs/GUIDE.md#mqtt-for-exposed-settings)) |
 | `<topic>/status` | `online` / `offline` (pixel2mqtt sets this) |
