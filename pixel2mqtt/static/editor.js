@@ -603,11 +603,15 @@ const Editor = (() => {
   function renderSceneProps() {
     $("#bgNone").checked = !sc.bg; $("#bgColor").style.background = sc.bg ? hex(sc.bg) : "repeating-conic-gradient(#3a3a3a 0 25%, #222 0 50%) 0 0 / 8px 8px";
     $("#bgNoneWrap").classList.toggle("hidden", mode !== "icon");
+    $("#iconSizeRow").classList.toggle("hidden", mode !== "icon");
+    const sel = $("#iconSize"), cur = `${sc.w}x${sc.h}`;
+    for (const o of [...sel.options]) if (o.dataset.cur) o.remove();
+    if (![...sel.options].some(o => o.value === cur)) { const o = new Option(`${sc.w}×${sc.h}`, cur); o.dataset.cur = "1"; sel.insertBefore(o, sel.lastElementChild); }
+    sel.value = cur;
   }
   function setMode(m) {   // m = project type: "anim" (52x32, motion, live preview) or "icon" (any size, frames only)
     mode = m; sc = docs[m];
     const icon = m === "icon";
-    $("#iconSizeBtn").classList.toggle("hidden", !icon);
     $("#grabBtn").disabled = icon;
     for (const e of [$("#pTile").closest("label"), $("#dirPad"), $("#pSpeed").closest("label"), $("#pBlink").closest("label"), $("#liveChk").closest("label")])
       e.classList.toggle("hidden", icon);
@@ -685,10 +689,7 @@ const Editor = (() => {
     if (!await leaveProject()) return;
     let w = PW, h = PH;
     if (type === "icon") {
-      let v = $("#newIconSize").value;
-      if (v === "custom") { v = await askText("Icon size, width × height (up to 52×32)", "16x16", { ok: "Create" }); if (!v) return; }
-      const m = v.match(/(\d+)\s*[x×*]\s*(\d+)/i); if (!m) return toast("Size like 16x16", true);
-      w = Math.max(1, Math.min(PW, +m[1])); h = Math.max(1, Math.min(PH, +m[2]));
+      w = 16; h = 16;   // resize in the editor (Layers card: Size)
     }
     await refreshOpenList();
     const s = type === "icon" ? Scene.newScene(w, h, null) : Scene.newScene(PW, PH, [0, 0, 0]);
@@ -926,10 +927,10 @@ const Editor = (() => {
   $("#panBtn").addEventListener("click", () => setPan(!panMode));
   let lastBg = [0, 0, 0];
   $("#bgNone").addEventListener("change", e => { pushUndo(); if (sc.bg) lastBg = sc.bg; sc.bg = e.target.checked ? null : lastBg; renderSceneProps(); touch(); });
-  $("#iconSizeBtn").addEventListener("click", async () => {
-    closeMenus();
-    const v = await askText("Icon size, width × height (up to 52×32). Layers keep their pixels.", `${sc.w}x${sc.h}`, { ok: "Resize" }); if (!v) return;
-    const m = v.match(/(\d+)\s*[x×*]\s*(\d+)/i); if (!m) return toast("Size like 16x16", true);
+  $("#iconSize").addEventListener("change", async e => {
+    let v = e.target.value;
+    if (v === "custom") { v = await askText("Icon size, width × height (up to 52×32). Layers keep their pixels.", `${sc.w}x${sc.h}`, { ok: "Resize" }); if (!v) return renderSceneProps(); }
+    const m = v.match(/(\d+)\s*[x×*]\s*(\d+)/i); if (!m) { renderSceneProps(); return toast("Size like 16x16", true); }
     pushUndo(); sc.w = Math.max(1, Math.min(PW, +m[1])); sc.h = Math.max(1, Math.min(PH, +m[2])); fullRefresh(); syncDoc();
   });
   function closeMenus() { $("#docMore").classList.add("hidden"); }

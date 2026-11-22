@@ -40,8 +40,7 @@
       <h3>New project</h3>
       <div class="newrow">
         <button id="newAnimBtn" class="primary">+ New animation <span class="small">52×32</span></button>
-        <span class="newicon"><button id="newIconBtn">+ New icon</button>
-          <select id="newIconSize" title="Icon size"><option value="8x8">8×8</option><option value="16x16" selected>16×16</option><option value="24x24">24×24</option><option value="32x32">32×32</option><option value="custom">custom…</option></select></span>
+        <span class="newicon"><button id="newIconBtn" title="A new 16×16 icon; change its size in the editor">+ New icon</button></span>
         <span class="newicon"><button id="newScreenBtn" title="An info screen: text, values from Home Assistant, icons, bars and sparklines">+ New screen</button>
           <select id="screenExample" class="hidden" title="Start from an example screen"><option value="">From example…</option></select></span>
         <label class="btnlike" title="Open a project file exported from pixel2mqtt (.pixel2mqtt.json)">Import project file<input id="importProj" type="file" accept=".json,application/json" hidden></label>
@@ -108,7 +107,6 @@
           <button id="sendBtn" class="primary" title="Bake it and put it on the display under the project's name">Send to display</button>
           <button id="docMoreBtn" title="More">⋮</button>
           <div id="docMore" class="docmenu small hidden">
-            <button id="iconSizeBtn" class="hidden">Change icon size…</button>
             <button id="dupBtn">Duplicate project</button>
             <button id="exportBtn">Export project file</button>
             <button id="pngBtn">Export PNG</button>
@@ -163,6 +161,10 @@
         <div class="ly bgrow" title="Background: drawn under every layer">
           <button id="bgColor" class="swatch small" title="Background colour"></button><span class="n">Background</span>
           <label class="small" id="bgNoneWrap"><input id="bgNone" type="checkbox"> transparent</label>
+        </div>
+        <div class="ly bgrow hidden" id="iconSizeRow" title="Icon size in LEDs (up to 52×32). Layers keep their pixels.">
+          <span class="n">Size</span>
+          <select id="iconSize"><option value="8x8">8×8</option><option value="16x16">16×16</option><option value="24x24">24×24</option><option value="32x32">32×32</option><option value="custom">custom…</option></select>
         </div>
         <div class="btns">
           <button id="lyDup" title="Duplicate the selected layer">⧉ Duplicate</button>
