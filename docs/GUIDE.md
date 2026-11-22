@@ -191,6 +191,20 @@ Values previews any member. After **Send to display**, Home Assistant gets a dro
 **Rotate**, and a number for the rotate time. Rotate steps through the members every N seconds, all of a member's
 values change together, and new members (a new ticker in Easy Stock) appear in the dropdown by themselves.
 
+**Home Assistant controls.** Any screen setting can become an entity on the display's device in Home Assistant. Tick it
+under **Control from Home Assistant**: element settings (font, alignment, colour, blink, a bar's range, a sparkline's
+shading, ...) are in the element's panel, and screen settings (time on screen, order, background, stale after, and
+each sparkline's history window) are in **Screen**. Each control has a name (default "<screen> <setting>", e.g.
+*Market chart history*) and a type: a number (min, max, step, unit), a dropdown (options, comma-separated), a switch
+or text. After **Send to display**, a change in Home Assistant is checked against that range or list, saved, and on
+the display within a second or two (a history window resends the sparkline). Opening the screen in the editor picks
+up what Home Assistant changed. Unticking a control, or deleting the screen, removes its entity. A group's member
+dropdown and rotate time are built-in controls of the same kind.
+
+MQTT: discovery under `<prefix>/<number|select|switch|text>/<display>/scr_<screen>_<setting>/config`, commands on
+`<topic>/control/<screen>/<setting>/set`, state on `.../state`. Unique ids are `<display>_scr_<screen>_<setting>`, so
+renaming a screen makes new entities.
+
 Home Assistant access is automatic in the add-on. In Docker, set `HA_URL` and `HA_TOKEN_FILE` (see the README).
 Without it, values are plain names: publish them yourself to `<topic>/values/set`, and the Values tab shows an
 example automation.
