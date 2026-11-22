@@ -3,7 +3,8 @@
 // The preview is always render(parse(compile(project))), so what the canvas shows is exactly what is sent.
 // Uses screenrender.js (ScreenRender) and app.js helpers (api, el, toast, ask, askText, cur, lib, getIcon, ...).
 const Screens = (() => {
-  const R = ScreenRender, S = 16;               // canvas cell size (px)
+  const R = ScreenRender;
+  let S = 16;   // canvas px per LED: follows the canvas's on-screen size, so the LED gaps stay crisp (fitCanvas)
   const BUILTIN = new Set(["time", "date", "weekday", "month", "day", "hour", "minute", "second"]);
   const OPS = ["==", "!=", "<", ">", "<=", ">=", "in", "set", "has", "fresh"];
   const OP_LABEL = { set: "is set", has: "has a value", fresh: "is fresh" };   // set: a bare name (exists and isn't 0/off/false/empty)
@@ -252,7 +253,7 @@ const Screens = (() => {
 
   /* ================================================================ UI skeleton */
   root.innerHTML = `
-  <div class="stagebar">
+  <div class="stagebar scr-top">
     <span class="docbar">
       <button id="scrHome" title="Back to all projects (saves first)">◂ Projects</button>
       <span class="badge">Screen</span>
@@ -280,7 +281,7 @@ const Screens = (() => {
       <div id="scrErrors" class="scr-errors"></div>
     </div>
     <div class="scr-right">
-      <div class="segs wide" id="scrTabs"><button data-t="el" class="on">Element</button><button data-t="values">Values</button><button data-t="screen">Screen</button><button data-t="file">.scr</button></div>
+      <div class="segs wide" id="scrTabs"><button data-t="el" class="on">Element</button><button data-t="values">Sources</button><button data-t="screen">Screen</button><button data-t="file">.scr</button></div>
       <div id="scrPaneEl" class="card scr-pane"></div>
       <div id="scrPaneValues" class="card scr-pane hidden"></div>
       <div id="scrPaneScreen" class="card scr-pane hidden"></div>
@@ -288,6 +289,14 @@ const Screens = (() => {
     </div>
   </div>`;
   const cv = $("#scrCv"), g = cv.getContext("2d");
+  function fitCanvas() {   // draw at the real resolution: S whole device px per LED, the canvas exactly 52 x S wide
+    const dpr = window.devicePixelRatio || 1, avail = Math.min(cv.parentElement.clientWidth - 16, 832);
+    if (avail <= 0) return;
+    const s = Math.max(3, Math.min(32, Math.floor(avail * dpr / 52)));
+    if (s !== S || cv.width !== 52 * s) { S = s; cv.width = 52 * S; cv.height = 32 * S; dirty = true; }
+    cv.style.width = 52 * S / dpr + "px";
+  }
+  new ResizeObserver(fitCanvas).observe(cv.parentElement);
   const PALETTE = [["text", "Text", "T"], ["value", "Value", "{x}"], ["icon", "Icon", "◆"], ["iconmap", "Icon by value", "◆?"],
     ["bar", "Progress bar", "▬"], ["spark", "Sparkline", "∿"], ["rect", "Rectangle", "▭"], ["line", "Line", "╱"]];
   $("#scrPalette").replaceChildren(...PALETTE.map(([k, label, glyph]) => {
@@ -304,6 +313,7 @@ const Screens = (() => {
     $("#scrName").textContent = st.name + (st.edited ? " •" : "");
     const s = !st.sent || st.sent.as !== st.name ? ["Draft", "draft"] : st.sent.rev === st.rev && !st.edited ? ["On display", "ok"] : ["Changed since sent", "warn"];
     $("#scrStatus").textContent = s[0]; $("#scrStatus").className = "chip " + s[1];
+    $("#scrSend").classList.toggle("unsent", s[1] !== "ok"); $("#scrSend").title = s[1] === "ok" ? "Upload to the display and turn on its value bindings" : "Changes not sent: upload to the display";
     $("#scrRemove").classList.toggle("hidden", !(st.sent && st.sent.as));
   }
   function projectJSON() {
@@ -394,13 +404,7 @@ const Screens = (() => {
     if (!st) return;
     const c = ctx(), fb = parsed ? R.render(parsed, c) : new Uint8ClampedArray(52 * 32 * 3);
     st.lastFrame = fb;
-    for (let y = 0; y < 32; y++) for (let x = 0; x < 52; x++) {
-      const i = (y * 52 + x) * 3; g.fillStyle = `rgb(${fb[i]},${fb[i + 1]},${fb[i + 2]})`; g.fillRect(x * S, y * S, S, S);
-    }
-    g.strokeStyle = "rgba(255,255,255,.06)"; g.lineWidth = 1; g.beginPath();
-    for (let x = 1; x < 52; x++) { g.moveTo(x * S + .5, 0); g.lineTo(x * S + .5, 32 * S); }
-    for (let y = 1; y < 32; y++) { g.moveTo(0, y * S + .5); g.lineTo(52 * S, y * S + .5); }
-    g.stroke();
+    drawLEDs(g, fb, 3, 52, 32, S);   // dots, like the panel
     for (const gd of guides) { g.strokeStyle = "#ff3dbb"; g.lineWidth = 1; g.beginPath(); if (gd.x !== undefined) { g.moveTo(gd.x * S + .5, 0); g.lineTo(gd.x * S + .5, 32 * S); } else { g.moveTo(0, gd.y * S + .5); g.lineTo(52 * S, gd.y * S + .5); } g.stroke(); }
     const e = sel();
     if (e && !e.hidden) {
@@ -560,6 +564,8 @@ const Screens = (() => {
 
   /* ================================================================ inspector */
   const field = (label, input, hint) => el("label", { cls: "fld" }, el("span", {}, label), input, hint ? el("span", { cls: "muted small" }, hint) : "");
+  const info = t => el("span", { cls: "info", title: t, tabindex: "0" }, "ⓘ");
+  const unitIn = (input, u) => el("span", { cls: "unitin" }, input, el("i", {}, u));
   function num(e, k, opts = {}) {
     const i = el("input", { type: "number", value: e[k] === null || e[k] === undefined ? "" : String(e[k]), placeholder: opts.placeholder || "", step: "1" });
     i.addEventListener("change", () => edit(() => { e[k] = i.value === "" && opts.nullable ? null : +i.value; }));
@@ -581,7 +587,7 @@ const Screens = (() => {
   }
   function valueField(obj, k, forKind, compact) {   // a value name with a picker button
     const i = txt(obj, k, { placeholder: compact ? "value" : "value name, e.g. printer.progress" });
-    return el("span", { cls: "row" }, i, el("button", { title: "Pick a Home Assistant entity", onclick: () => pickEntity({ for: forKind, onPick: n => { edit(() => { obj[k] = n; }); renderInspector(); if (!$("#scrPaneScreen").classList.contains("hidden")) renderScreenPane(); } }) }, compact ? "⌕" : "⌕ Entity"));
+    return el("span", { cls: "vin" }, i, el("button", { type: "button", cls: "in-ico", title: "Pick a Home Assistant entity", onclick: ev => { ev.preventDefault(); pickEntity({ for: forKind, onPick: n => { edit(() => { obj[k] = n; }); renderInspector(); if (!$("#scrPaneScreen").classList.contains("hidden")) renderScreenPane(); } }); } }, "🔍"));
   }
   function colorInput(obj, k, opts = {}) {   // swatch + hex + the editor's recent colours
     const sw = el("button", { cls: "swatch small", title: "Pick a colour" }), hexIn = el("input", { cls: "hexin", value: obj[k] || "", maxlength: "7", spellcheck: "false", placeholder: opts.placeholder || "#rrggbb" });
@@ -614,41 +620,48 @@ const Screens = (() => {
         const join = el("select", {}, el("option", { value: "&&" }, "AND"), el("option", { value: "||" }, "OR")); join.value = r.join || "&&";
         join.addEventListener("change", () => edit(() => { r.join = join.value; }));
         const not = el("button", { cls: "chipbtn" + (r.neg ? " on" : ""), title: "NOT: true when this is false", onclick: () => { edit(() => { r.neg = !r.neg; }); render(); } }, "NOT");
-        const del = el("button", { title: "Remove", onclick: () => { edit(() => rows.splice(i, 1)); render(); } }, "✕");
-        if (r.op === "raw") return el("div", { cls: "condrow" }, i ? join : el("span", { cls: "muted small" }, "if"), not, txt(r, "lit", { placeholder: "condition" }), del);
+        const del = el("button", { cls: "icon", title: "Remove", onclick: () => { edit(() => rows.splice(i, 1)); render(); } }, "✕");
+        const head = i ? el("div", { cls: "condjoin" }, join) : "";
+        if (r.op === "raw") return el("div", {}, head, el("div", { cls: "condrow" }, el("div", { cls: "cl1" }, not, txt(r, "lit", { placeholder: "condition" }), del)));
         const op = el("select", {}, ...OPS.map(o => el("option", { value: o }, OP_LABEL[o] || o))); op.value = r.op || "==";
         op.addEventListener("change", () => { edit(() => { r.op = op.value; }); render(); });
         const lit = txt(r, "lit", { placeholder: r.op === "in" ? "a,b,c" : "value" });
         if (["has", "fresh", "set"].includes(r.op)) lit.classList.add("hidden");
-        return el("div", { cls: "condrow" }, i ? join : el("span", { cls: "muted small" }, "if"), not, valueField(r, "name", "text", true), op, lit, del);
+        const noLit = ["has", "fresh", "set"].includes(r.op);
+        return el("div", {}, head, el("div", { cls: "condrow" }, el("div", { cls: "cl1" }, not, valueField(r, "name", "text", true), op, noLit ? del : ""), noLit ? "" : el("div", { cls: "cl2" }, lit, del)));
       }), el("button", { cls: "small", onclick: () => { edit(() => rows.push({ join: "&&", name: "", op: "==", lit: "" })); render(); } }, rows.length ? "+ AND / OR" : `+ ${label}`));
     };
     render(); return wrap;
   }
-  function colorRules(e) {
+  function colorRules(e, opts = {}) {
     const c = e.color || (e.color = { base: "#ffffff", rules: [] });
     const wrap = el("div", { cls: "conds" });
     const render = () => wrap.replaceChildren(
-      el("div", { cls: "row" }, colorInput(c, "base"), el("span", { cls: "muted small" }, c.rules.length ? "otherwise" : "")),
+      opts.noBase ? "" : el("div", { cls: "row" }, colorInput(c, "base"), el("span", { cls: "muted small" }, c.rules.length ? "otherwise (rules below win)" : "")),
       ...c.rules.map((r, i) => {
         const op = el("select", {}, ...OPS.filter(o => o !== "fresh").map(o => el("option", { value: o }, OP_LABEL[o] || o))); op.value = r.op || "==";
         op.addEventListener("change", () => edit(() => { r.op = op.value; }));
-        return el("div", { cls: "condrow" }, el("span", { cls: "muted small" }, "when"), valueField(r, "name", "num", true), op, txt(r, "lit", { placeholder: "0" }), colorInput(r, "color"),
-          el("button", { title: "Remove", onclick: () => { edit(() => c.rules.splice(i, 1)); render(); } }, "✕"));
+        const not = el("button", { cls: "chipbtn" + (r.neg ? " on" : ""), title: "NOT: true when this is false", onclick: () => { edit(() => { r.neg = !r.neg; }); render(); } }, "NOT");
+        return el("div", { cls: "condrow" }, el("div", { cls: "cl1" }, not, valueField(r, "name", "num", true), op),
+          el("div", { cls: "cl2" }, txt(r, "lit", { placeholder: "0" }), colorInput(r, "color"), el("button", { cls: "icon", title: "Remove", onclick: () => { edit(() => c.rules.splice(i, 1)); render(); } }, "✕")));
       }),
       el("button", { cls: "small", title: "The first rule that's true picks the colour; otherwise the colour above", onclick: () => { edit(() => c.rules.push({ name: "", op: ">", lit: "0", color: "#28dc50" })); render(); } }, "+ Add colour rule"));
     render(); return wrap;
   }
-  function fontPicker(e) {   // each font drawn in its own pixels
+  function fontPicker(e) {   // each font drawn as LEDs (3 px each, 1 px gap): Big and Huge show their 2x2 / 3x3 LED blocks
+    const S = 3;
     return el("div", { cls: "fontpick" }, ...["tiny", "small", "big", "huge"].map(f => {
-      const sample = "Ag42", w = R.textWidth(f === "tiny" ? "AG42" : sample, f), h = R.FONTS[f].gh, c = el("canvas", { width: w, height: h });
+      const text = f === "tiny" ? "AG" : "Ag", w = R.textWidth(text, f), h = R.FONTS[f].gh;
       const fb = R.render(R.parse(`PXS1
-text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
+text 0 0 font=${f} "${text}"
 `, "font"), { values: {} });
-      const img = c.getContext("2d").createImageData(w, h);
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const s = (y * 52 + x) * 3, d = (y * w + x) * 4; img.data[d] = fb[s]; img.data[d + 1] = fb[s + 1]; img.data[d + 2] = fb[s + 2]; img.data[d + 3] = 255; }
-      c.getContext("2d").putImageData(img, 0, 0);
-      c.style.height = Math.min(42, h * 2) + "px";
+      const c = el("canvas", { width: w * S, height: h * S }), g = c.getContext("2d");
+      g.fillStyle = "#000"; g.fillRect(0, 0, w * S, h * S);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (y * 52 + x) * 3, lit = fb[i] | fb[i + 1] | fb[i + 2];
+        g.fillStyle = lit ? `rgb(${fb[i]},${fb[i + 1]},${fb[i + 2]})` : "#161616";
+        g.fillRect(x * S, y * S, S - ledGap(S), S - ledGap(S));
+      }
       return el("button", { cls: e.font === f ? "on" : "", title: FONT_LABEL[f], onclick: () => { edit(() => { e.font = f; }); renderInspector(); } }, c, el("span", { cls: "small" }, FONT_LABEL[f]));
     }));
   }
@@ -676,62 +689,74 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
     const pane = $("#scrPaneEl"), e = sel();
     if (!st) return;
     if (!e) return pane.replaceChildren(el("p", { cls: "muted" }, "Select an element on the canvas, or add one from the left."));
-    const kids = [el("h3", {}, { text: "Text", icon: e.byValue ? "Icon by value" : "Icon", bar: "Progress bar", spark: "Sparkline", rect: "Rectangle", line: "Line", pixel: "Pixel" }[e.type])];
-    const pos = el("div", { cls: "row wrap" }, field("X", num(e, "x")), field("Y", num(e, "y")));
-    if (e.type === "line") pos.append(field("X2", num(e, "x2")), field("Y2", num(e, "y2")));
-    if (["bar", "spark", "rect"].includes(e.type)) pos.append(field("W", num(e, "w")), field("H", num(e, "h")));
-    if (e.type === "text") pos.append(field("W", num(e, "w", { nullable: true, placeholder: "auto" })), field("H", num(e, "h", { nullable: true, placeholder: "auto" })));
-    kids.push(pos);
+    const P = Object.fromEntries(elementParams(e).map(p => [p.param.split(".").pop(), p]));
+    const X = (k, node) => xp(P[k], node);
+    const dup = () => { const c = JSON.parse(JSON.stringify(e)); c.id = uid(); c.x += 2; c.y += 2; if (c.type === "line") { c.x2 += 2; c.y2 += 2; } edit(() => doc().elements.push(c)); selId = c.id; renderAll(); };
+    const kids = [el("div", { cls: "panehead" }, el("h3", {}, { text: "Text", icon: e.byValue ? "Icon by value" : "Icon", bar: "Progress bar", spark: "Sparkline", rect: "Rectangle", line: "Line", pixel: "Pixel" }[e.type]),
+      el("span", { cls: "grow" }), el("button", { cls: "icon", title: "Duplicate", onclick: dup }, "⧉"), el("button", { cls: "icon danger", title: "Delete", onclick: () => removeElement(e) }, "🗑"))];
+    const pos = [field("X", num(e, "x")), field("Y", num(e, "y"))];
+    if (e.type === "line") pos.push(field("X2", num(e, "x2")), field("Y2", num(e, "y2")));
+    if (["bar", "spark", "rect"].includes(e.type)) pos.push(field("W", num(e, "w")), field("H", num(e, "h")));
+    if (e.type === "text") pos.push(field("W", num(e, "w", { nullable: true, placeholder: "auto" })), field("H", num(e, "h", { nullable: true, placeholder: "auto" })));
+    kids.push(el("div", { cls: "g4" }, ...pos));
     if (e.type === "text") {
-      kids.push(field("Font", fontPicker(e)),
+      kids.push(X("font", field("Font", fontPicker(e))),
         field("Text", templateEditor(e)),
-        el("div", { cls: "row wrap" }, field("Align", choice(e, "align", ["left", "center", "right"], ["⇤", "↔", "⇥"])), field("Vertical", choice(e, "valign", ["top", "middle", "bottom"], ["⤒", "↕", "⤓"]))),
-        el("div", { cls: "row wrap" }, field("Overflow", choice(e, "overflow", ["clip", "scroll", "shrink"], ["Clip", "Scroll", "Shrink to fit"])),
-          e.overflow === "scroll" ? field("Speed", num(e, "speed"), "px/s") : "", field("Spacing", num(e, "spacing"))));
-      if (e.w === null && (e.align !== "left" || e.overflow !== "clip")) kids.push(el("p", { cls: "hint" }, "Alignment and overflow act within the box: set W (and H) for them to matter."));
+        el("div", { cls: "g2" }, X("align", field("Align", choice(e, "align", ["left", "center", "right"], ["⇤", "↔", "⇥"]))), X("valign", field("Vertical", choice(e, "valign", ["top", "middle", "bottom"], ["⤒", "↕", "⤓"])))),
+        X("overflow", field("Overflow", choice(e, "overflow", ["clip", "scroll", "shrink"], ["Clip", "Scroll", "Shrink"]))),
+        e.overflow === "scroll" ? el("div", { cls: "g2" }, X("speed", field("Scroll speed", unitIn(num(e, "speed"), "px/s"))), el("p", { cls: "hint" }, "Scrolls when the text is wider than W.")) : "");
+      if (e.w === null && (e.align !== "left" || e.overflow !== "clip")) kids.push(el("p", { cls: "hint" }, "Set W (and H): alignment and overflow act within the box."));
     }
     if (e.type === "icon") {
       const names = ["@degree", "@up", "@down", "@moon", "@coin:BTC", ...lib.icons.map(f => stem(f.name))];
       const iconSel = (obj, k) => { const s = el("select", {}, el("option", { value: "" }, "(choose)"), ...names.map(n => el("option", { value: n }, n))); s.value = obj[k] || ""; s.addEventListener("change", () => { edit(() => { obj[k] = s.value; }); loadIcons(); }); return s; };
       if (e.byValue) {
         kids.push(field("Value", valueField(e, "value", "text")), el("div", { cls: "tp-label" }, "Icon for each value (* = anything else)"));
-        e.map.forEach((m, i) => kids.push(el("div", { cls: "condrow" }, txt(m, "k", { placeholder: "sunny" }), el("span", {}, "→"), iconSel(m, "icon"), el("button", { onclick: () => { edit(() => e.map.splice(i, 1)); renderInspector(); } }, "✕"))));
+        e.map.forEach((m, i) => kids.push(el("div", { cls: "maprow" }, txt(m, "k", { placeholder: "sunny" }), iconSel(m, "icon"), el("button", { cls: "icon", title: "Remove", onclick: () => { edit(() => e.map.splice(i, 1)); renderInspector(); } }, "✕"))));
         kids.push(el("button", { cls: "small", onclick: () => { edit(() => e.map.splice(e.map.length - 1, 0, { k: "", icon: "" })); renderInspector(); } }, "+ Add"));
       } else {
-        kids.push(field("Icon", iconSel(e, "icon"), lib.icons.length ? "" : "Adopt a display to use its icon library; @ icons are drawn built-ins."),
-          field("…or a name from values", txt(e, "icon", { placeholder: "@coin:{ticker.symbol}" }), "a template, e.g. @coin:{ticker.symbol}"),
-          field("Frame from value", valueField(e, "frame", "bar"), "optional: picks the frame instead of playing it (a progress icon)"),
+        kids.push(field(el("span", {}, "Icon ", info("@ icons are drawn built-ins; others come from the display's icon library.")), iconSel(e, "icon")),
+          field(el("span", {}, "…or a name from values ", info("A template, e.g. @coin:{ticker.symbol}")), txt(e, "icon", { placeholder: "@coin:{ticker.symbol}" })),
+          field(el("span", {}, "Frame from value ", info("Optional: picks the frame instead of playing the animation (a progress icon).")), valueField(e, "frame", "bar")),
           e.frame ? field("Range", txt(e, "range", { placeholder: "0,100" })) : "");
       }
     }
     if (e.type === "bar") {
-      kids.push(field("Value", valueField(e, "value", "bar")), el("div", { cls: "row wrap" }, field("Min", num(e, "min")), field("Max", num(e, "max"))),
-        el("div", { cls: "row wrap" }, field("Fill", colorInput(e, "fill")), field("Fill end (gradient)", colorInput(e, "fill2", { optional: true, placeholder: "none" }))),
-        field("Empty part", colorInput(e, "bg", { optional: true, placeholder: "none" })),
-        field("Direction", choice(e, "dir", ["right", "left", "up", "down"], ["→", "←", "↑", "↓"])), check(e, "pulse", "Blink the leading edge"));
+      kids.push(field("Value", valueField(e, "value", "bar")), el("div", { cls: "g2" }, X("min", field("Min", num(e, "min"))), X("max", field("Max", num(e, "max")))),
+        el("div", { cls: "g2" }, X("fill", field("Fill", colorInput(e, "fill"))), field("Fill end", colorInput(e, "fill2", { optional: true, placeholder: "none" }))),
+        el("div", { cls: "g2" }, X("bg", field("Empty part", colorInput(e, "bg", { optional: true, placeholder: "none" }))), X("dir", field("Direction", choice(e, "dir", ["right", "left", "up", "down"], ["→", "←", "↑", "↓"])))),
+        X("pulse", check(e, "pulse", "Blink the leading edge")));
     }
     if (e.type === "spark") {
-      kids.push(field("Series", valueField(e, "series", "spark"), "a list value, e.g. a History binding"), check(e, "area", "Shade under the line"), check(e, "dot", "Blink the newest point"));
-      const b = doc().bindings[e.series];
-      if (b && (b.kind === "history" || (b.kind === "group" && b.source === "history"))) {
-        const on = (doc().controls || []).some(c => c.param === `value.${e.series}.hours`);
-        kids.push(el("p", { cls: "hint" }, `History window: last ${b.hours} h${on ? ", controlled from Home Assistant" : ""}. `,
-          el("button", { cls: "small", onclick: () => setTab("screen") }, on ? "Edit the control" : "Control it from Home Assistant…")));
+      kids.push(field(el("span", {}, "Series ", info("A list value, e.g. a History binding.")), valueField(e, "series", "spark")), X("area", check(e, "area", "Shade under the line")), X("dot", check(e, "dot", "Blink the newest point")));
+      const hp = screenParams().find(p => p.param === `value.${e.series}.hours`);
+      if (hp) {
+        const PRE = [[1, "1h"], [6, "6h"], [24, "24h"], [72, "3d"], [168, "7d"], [720, "30d"]], h = +hp.get();
+        const w = el("select", {}, ...PRE.map(([v, l]) => el("option", { value: v }, l)), el("option", { value: "custom" }, PRE.some(([v]) => v === h) ? "Custom…" : `Custom (${h} h)…`));
+        w.value = PRE.some(([v]) => v === h) ? String(h) : "custom";
+        w.addEventListener("change", async () => {
+          let v = w.value;
+          if (v === "custom") { const t = await askText("History window in hours (1 to 8784)", String(h), { ok: "Set" }); v = t && +t > 0 && +t <= 8784 ? +t : null; }
+          if (v) edit(() => hp.set(+v));
+          renderInspector();
+        });
+        kids.push(xp(hp, field("History window", w)));
       }
     }
-    if (e.type === "rect") kids.push(check(e, "fill", "Filled"));
-    if (e.type !== "bar") kids.push(el("div", { cls: "tp-label" }, "Colour"), colorRules(e));
-    else kids.push(el("div", { cls: "tp-label" }, "Colour (when no fill is set)"), colorRules(e));
-    kids.push(el("div", { cls: "tp-label" }, "Show when"), condBuilder(e.show || (e.show = []), "Show only when…"));
-    kids.push(el("div", { cls: "row wrap" }, field("Blink (ms on / ms off)", num(e, "blink", { placeholder: "off" }), "50 to 10000; empty or 0 = steady")));
-    kids.push(controlsBox(elementParams(e)));
+    if (e.type === "rect") kids.push(X("fill", check(e, "fill", "Filled")));
+    if (e.type === "text") {   // colour and spacing share a row; the colour rules follow full width
+      const c = e.color || (e.color = { base: "#ffffff", rules: [] });
+      kids.push(el("div", { cls: "g3" }, Object.assign(X("color", field("Colour", colorInput(c, "base"))), { style: "grid-column: span 2" }),
+        X("spacing", field("Spacing", unitIn(num(e, "spacing"), "px")))), colorRules(e, { noBase: true }));
+    } else kids.push(X("color", field(e.type === "bar" ? "Colour (when no fill is set)" : "Colour", colorRules(e))));
+    kids.push(field("Show when", condBuilder(e.show || (e.show = []), "Show only when…")));
+    const bl = el("input", { type: "checkbox" }); bl.checked = +e.blink > 0;
+    bl.addEventListener("change", () => { edit(() => { e.blink = bl.checked ? 500 : 0; }); renderInspector(); });
+    kids.push(X("blink", field("Blink", el("div", { cls: "row" }, el("label", { cls: "small" }, bl, " Blink"), +e.blink > 0 ? unitIn(num(e, "blink"), "ms") : ""))));
     const errs = errorsFor(e);
     if (errs.length) kids.push(el("div", { cls: "scr-errors" }, ...errs.map(t => el("div", { cls: "err small" }, "⚠ " + t))));
-    kids.push(el("div", { cls: "row" }, el("button", { onclick: () => { const c = JSON.parse(JSON.stringify(e)); c.id = uid(); c.x += 2; c.y += 2; if (c.type === "line") { c.x2 += 2; c.y2 += 2; } edit(() => doc().elements.push(c)); selId = c.id; renderAll(); } }, "Duplicate"),
-      el("button", { cls: "danger", onclick: () => removeElement(e) }, "Delete")));
     pane.replaceChildren(...kids);
   }
-
 
   /* ================================================================ HA controls (settings as Home Assistant entities) */
   const SWATCHES = ["#ffffff", "#ff3c3c", "#28dc50", "#00a0ff", "#ffcd3c", "#ff8800", "#b4b4b4", "#000000"];
@@ -771,39 +796,56 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
     return out;
   }
   const allParams = () => [...screenParams(), ...doc().elements.flatMap(elementParams)];
-  function controlsBox(params) {
-    const box = el("div", { cls: "groupbox" }, el("div", { cls: "tp-label" }, "Control from Home Assistant"));
+  const HA_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2.5 1.5 12H5v9h14v-9h3.5L12 2.5zm0 6.2a2 2 0 0 1 1 3.7V18h-2v-5.6a2 2 0 0 1 1-3.7z"/></svg>';
+  const slugId = s => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  function entityId(c) { const d = typeof display === "function" && display(); return `${c.type}.${slugId(((d && d.name) || "Pixel display") + " " + c.name)}`; }
+  function xp(p, node) {   // the Expose toggle at the right of a field's label; on = accent border and a popover to edit
+    if (!p || !node) return node;
     const list = doc().controls || (doc().controls = []);
-    for (const p of params) {
-      const c = list.find(x => x.param === p.param);
-      const on = el("input", { type: "checkbox" }); on.checked = !!c;
-      on.addEventListener("change", () => {
-        edit(() => {
-          if (on.checked) list.push(Object.assign({ param: p.param, name: `${st.name} ${p.label}` }, JSON.parse(JSON.stringify(p.def))));
-          else list.splice(list.indexOf(c), 1);
-        });
-        renderInspector(); renderScreenPane();
-      });
-      box.append(el("label", { cls: "small" }, on, " " + p.label));
-      if (!c) continue;
+    const c = list.find(x => x.param === p.param);
+    const b = el("button", { type: "button", cls: "ha-tog" + (c ? " on" : ""), title: c ? `Exposed as ${entityId(c)}, click to edit` : "Expose to Home Assistant" });
+    b.innerHTML = HA_SVG;
+    b.addEventListener("click", ev => {
+      ev.preventDefault(); ev.stopPropagation();
+      let cc = list.find(x => x.param === p.param);
+      if (!cc) { cc = Object.assign({ param: p.param, name: `${doc().settings.name || st.name} ${p.label}` }, JSON.parse(JSON.stringify(p.def))); edit(() => list.push(cc)); }
+      ctlPopover(b, p, cc);
+    });
+    node.classList.add("xp"); node.classList.toggle("exposed", !!c); node.dataset.param = p.param;
+    const lab = node.querySelector(":scope > span:first-child");
+    if (lab && node.classList.contains("fld")) lab.append(b); else node.append(b);
+    return node;
+  }
+  function ctlPopover(anchor, p, c) {
+    if (popEl) popEl.remove();
+    const hrs = p.param.startsWith("value.");
+    const box = el("div", { cls: "cpop ctlpop" });
+    const done = () => { if (popEl) { popEl.remove(); popEl = null; } renderInspector(); renderScreenPane(); };
+    const render = () => {
       const type = el("select", {}, ...["number", "select", "switch", "text"].map(t => el("option", { value: t }, t))); type.value = c.type;
-      const hrs = p.param.startsWith("value.");
-      type.addEventListener("change", () => { edit(() => { c.type = type.value; if (c.type === "select" && !c.options) c.options = hrs ? HOURS_PRESETS.slice() : [String(p.get() ?? "")]; if (c.type === "number" && c.min === undefined) Object.assign(c, hrs ? nm(1, 720, 1, "h") : nm(0, 100, 1, "")); }); renderInspector(); renderScreenPane(); });
-      const row = el("div", { cls: "row wrap ctlrow" }, field("Name", txt(c, "name")), field("Type", type));
+      type.addEventListener("change", () => { edit(() => { c.type = type.value; if (c.type === "select" && !c.options) c.options = hrs ? HOURS_PRESETS.slice() : [String(p.get() ?? "")]; if (c.type === "number" && c.min === undefined) Object.assign(c, hrs ? nm(1, 720, 1, "h") : nm(0, 100, 1, "")); }); render(); });
+      const kids = [el("div", { cls: "panehead" }, el("b", {}, "Expose to Home Assistant"), el("span", { cls: "grow" }), el("button", { cls: "icon", title: "Close", onclick: done }, "✕")),
+        el("div", { cls: "muted small" }, entityId(c)), field("Name", txt(c, "name")), field("Type", type)];
       if (c.type === "number") {
-        const u = c.unit ? ` (${c.unit})` : "";
-        row.append(field("Lowest" + u, num(c, "min")), field("Highest" + u, num(c, "max")), field("Step", num(c, "step")), field("Unit", txt(c, "unit")),
-          el("p", { cls: "hint" }, "The range allowed in Home Assistant."));
+        const u = c.unit || "";
+        kids.push(el("div", { cls: "g3" }, field("Lowest", u ? unitIn(num(c, "min"), u) : num(c, "min")), field("Highest", u ? unitIn(num(c, "max"), u) : num(c, "max")), field("Step", num(c, "step"))),
+          field("Unit", txt(c, "unit")), el("p", { cls: "hint" }, "The range allowed in Home Assistant."));
       }
       if (c.type === "select") {
         const o = el("input", { type: "text", value: (c.options || []).join(", "), spellcheck: "false" });
         o.addEventListener("change", () => edit(() => { c.options = o.value.split(",").map(x => x.trim()).filter(Boolean); }));
-        row.append(field("Options", o, hrs ? "comma-separated; 12h, 7d, 30d or hours" : "comma-separated"));
+        kids.push(field("Options", o, hrs ? "comma-separated; 12h, 7d, 30d or hours" : "comma-separated"));
       }
-      box.append(row);
-    }
-    box.append(el("p", { cls: "hint" }, "After Send to display, each ticked setting is an entity on the display's device in Home Assistant. Changing it there updates the display right away."));
-    return box;
+      kids.push(el("div", { cls: "row" }, el("button", { cls: "danger small", onclick: () => { const list = doc().controls; edit(() => list.splice(list.indexOf(c), 1)); done(); } }, "Stop exposing"),
+        el("span", { cls: "grow" }), el("button", { cls: "primary small", onclick: done }, "Done")));
+      box.replaceChildren(...kids);
+    };
+    render();
+    popEl = box; document.body.append(box);
+    const r = anchor.getBoundingClientRect();
+    box.style.left = Math.max(8, Math.min(window.innerWidth - 300, r.right - 290)) + "px"; box.style.top = Math.max(8, Math.min(window.innerHeight - 360, r.bottom + 6)) + "px";
+    box.addEventListener("click", ev => ev.stopPropagation());
+    setTimeout(() => document.addEventListener("click", function off(ev) { if (popEl !== box) return document.removeEventListener("click", off); if (box.contains(ev.target)) return; document.removeEventListener("click", off); done(); }), 0);
   }
   function controlsForSend(lineOfSent) {   // the project's controls with their .scr line and current value
     const params = new Map(allParams().map(p => [p.param, p])), lineOf = new Map([...lineOfSent].map(([l, id]) => [id, l]));
@@ -833,29 +875,42 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
   }
 
   /* ================================================================ screen settings */
+  const secOpen = { Basics: true, "When to show": true, Group: true, "Exposed to HA": true };
+  function section(title, ...kids) {
+    const d = el("details", { cls: "sec" }, el("summary", {}, title), ...kids);
+    d.open = secOpen[title] !== false;
+    d.addEventListener("toggle", () => { secOpen[title] = d.open; });
+    return d;
+  }
   function renderScreenPane() {
     const s = doc().settings, pane = $("#scrPaneScreen");
+    const P = Object.fromEntries(screenParams().map(p => [p.param, p]));
     const needs = el("input", { type: "text", value: (s.needs || []).join(" "), placeholder: "printer.status printer.progress", spellcheck: "false" });
     needs.addEventListener("change", () => edit(() => { s.needs = needs.value.split(/[\s,]+/).filter(Boolean); }));
     const durSel = (k, def) => { const i = el("input", { type: "text", value: s[k] || "", placeholder: def, spellcheck: "false", size: "6" }); i.addEventListener("change", () => { const v = i.value.trim(); if (v && !/^\d+[smhd]$/.test(v)) { i.value = s[k] || ""; return toast("Durations look like 90s, 30m, 2h or 1d", true); } edit(() => { s[k] = v; }); }); return i; };
+    const shown = s.name || st.name;
+    const rename = async () => { const n = await askText("Name on the display (Home Assistant's Screen select and playlists)", shown, { ok: "Rename" }); if (n === null || n === undefined) return; edit(() => { s.name = n.trim(); }); renderScreenPane(); };
     pane.replaceChildren(el("h3", {}, "Screen"),
-      field("Name", txt(s, "name", { placeholder: st.name }), "shown in Home Assistant's Screen select and in playlists"),
-      field("Needs", needs, "hide the screen until all of these values exist and are fresh"),
-      el("div", { cls: "tp-label" }, "Show when"), condBuilder(s.show, "Show only when…"),
-      el("div", { cls: "tp-label" }, "Keep showing after"), condBuilder(s.linger, "Keep showing after… (e.g. a print finishes)"),
-      s.linger.length ? field("for", durSel("lingerFor", "30m")) : "",
-      el("div", { cls: "row wrap" }, field("Stale after", durSel("stale", "6h")), field("Time on screen (s)", num(s, "time", { nullable: true, placeholder: "default" })), field("Order", num(s, "order", { nullable: true, placeholder: "100" }))),
-      field("Background", colorInput(s, "bg")),
-      groupSection(s), controlsBox(screenParams()));
+      el("div", { cls: "row ondisp" }, el("span", { cls: "muted small" }, "On the display as: "), el("b", {}, shown), el("span", { cls: "grow" }), el("button", { cls: "small", onclick: rename }, "Rename")),
+      section("Basics",
+        el("div", { cls: "g2" }, xp(P["screen.time"], field("Time on screen", unitIn(num(s, "time", { nullable: true, placeholder: "default" }), "s"))), xp(P["screen.order"], field("Order", num(s, "order", { nullable: true, placeholder: "100" })))),
+        xp(P["screen.bg"], field("Background", colorInput(s, "bg")))),
+      section("When to show",
+        field(el("span", {}, "Needs ", info("Hide the screen until all of these values exist and are fresh.")), needs),
+        xp(P["screen.stale"], field(el("span", {}, "Stale after ", info("A needed value older than this hides the screen (default 6h).")), durSel("stale", "6h"))),
+        field("Show only when", condBuilder(s.show, "Show only when…")),
+        field(el("span", {}, "Keep showing after ", info("e.g. keep a finished print on screen for a while.")), condBuilder(s.linger, "Keep showing after…")),
+        s.linger.length ? field("for", durSel("lingerFor", "30m")) : ""),
+      section("Group", groupSection(s)),
+      section("Exposed to HA", exposedList()));
   }
   // Group: this screen is a template, shown for one member of a group of entities at a time
   function groupOf() { const g = doc().settings.group; return g && g.by && g.match ? { name: g.name || `${st.name} member`, by: g.by, match: g.match, rotate: +g.rotate || 8 } : null; }
   function groupSection(s) {
-    const box = el("div", { cls: "groupbox" });
+    const box = el("div", {});
     const on = el("input", { type: "checkbox" }); on.checked = !!s.group;
     on.addEventListener("change", () => { edit(() => { s.group = on.checked ? { name: `${st.name} member`, by: "integration", match: "", rotate: 8 } : null; }); renderScreenPane(); loadMembers(); });
-    box.append(el("div", { cls: "tp-label" }, "Group (template screen)"),
-      el("label", { cls: "small" }, on, " Show one of several similar entities (e.g. every stock ticker), picked in Home Assistant or rotating"));
+    box.append(el("label", { cls: "small" }, on, " Template screen: one of several similar entities ", info("e.g. every stock ticker. Home Assistant gets a dropdown of the members plus Rotate. In Sources, take values from the group (◫ Group).")));
     if (!s.group) return box;
     const g = s.group;
     const by = el("select", {}, ...BY.map(([v, l]) => el("option", { value: v }, l))); by.value = g.by;
@@ -869,11 +924,33 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
         : g.by === "device" ? r.devices.map(d => d.name).filter(Boolean) : g.by === "domain" ? [...new Set(r.entities.map(e => e.id.split(".")[0]))] : [];
       dl.replaceChildren(...opts.sort().map(o => el("option", { value: o })));
     }).catch(() => {});
-    const list = el("div", { cls: "muted small" }, !g.match ? "Pick what the members have in common." : members.length ? `${members.length} member${members.length === 1 ? "" : "s"}: ${members.map(m => m.name).join(", ")}` : "No members match (yet).");
-    box.append(el("div", { cls: "row wrap" }, field("Members by", by), field(BY.find(x => x[0] === g.by)[1], match)), dl, list,
-      el("div", { cls: "row wrap" }, field("Dropdown name in Home Assistant", txt(g, "name", { placeholder: `${st.name} member` })), field("Rotate every (s)", num(g, "rotate"))),
-      el("p", { cls: "hint" }, "After Send to display, Home Assistant gets a dropdown with every member plus Rotate, and a number for the rotate time. In the Values tab, take values from the group (◫ Group) and preview any member."));
+    const list = !g.match ? el("p", { cls: "hint" }, "Pick what the members have in common.") : members.length ? el("div", { cls: "chips" }, ...members.map(m => el("span", { cls: "chip" }, m.name)))
+      : el("p", { cls: "hint" }, "No members match (yet).");
+    box.append(el("div", { cls: "g2" }, field("Members by", by), field(BY.find(x => x[0] === g.by)[1], match)), dl, list,
+      el("div", { cls: "g2" }, field("Dropdown name", txt(g, "name", { placeholder: `${st.name} member` })), field("Rotate every", unitIn(num(g, "rotate"), "s"))));
+    const [gn, gr] = box.lastChild.children; gn.dataset.param = "group.name"; gr.dataset.param = "group.rotate"; gn.classList.add("xp"); gr.classList.add("xp");
     return box;
+  }
+  function exposedList() {   // every entity this screen creates in Home Assistant
+    const g = doc().settings.group, list = doc().controls || [], params = new Map(allParams().map(p => [p.param, p])), rows = [];
+    if (g) {
+      rows.push(el("div", { cls: "exprow" }, el("span", { cls: "exptype" }, "select"), txt(g, "name", { placeholder: `${st.name} member` }), el("button", { cls: "icon", title: "Go to the group", onclick: () => goTo("group.name") }, "↗")));
+      rows.push(el("div", { cls: "exprow" }, el("span", { cls: "exptype" }, "number"), el("span", { cls: "small" }, `${g.name || st.name + " member"} rotate seconds`), el("button", { cls: "icon", title: "Go to the rotate time", onclick: () => goTo("group.rotate") }, "↗")));
+    }
+    for (const c of list) {
+      if (!params.has(c.param)) continue;
+      const i = txt(c, "name"); i.title = entityId(c);
+      rows.push(el("div", { cls: "exprow" }, el("span", { cls: "exptype" }, c.type), i, el("button", { cls: "icon", title: "Go to the setting", onclick: () => goTo(c.param) }, "↗")));
+    }
+    return rows.length ? el("div", {}, ...rows, el("p", { cls: "hint" }, "Entities on the display's device, created by Send to display."))
+      : el("p", { cls: "hint" }, "Nothing yet. Click ⌂ next to a setting to expose it.");
+  }
+  function goTo(param) {
+    if (param.startsWith("el.")) { selId = param.split(".")[1]; setTab("el"); renderAll(); }
+    else if (param.startsWith("value.")) { const sp = doc().elements.find(e => e.type === "spark" && e.series === param.slice(6, -6)); if (sp) { selId = sp.id; setTab("el"); renderAll(); } }
+    else { if (param.startsWith("group.")) secOpen.Group = true; setTab("screen"); }
+    const f = root.querySelector(`[data-param="${CSS.escape(param)}"]`);
+    if (f) { f.scrollIntoView({ block: "center" }); f.classList.add("flash"); setTimeout(() => f.classList.remove("flash"), 1200); }
   }
   async function loadMembers() {
     const g = groupOf();
@@ -930,7 +1007,8 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
   }
   function renderValuesPane() {
     const pane = $("#scrPaneValues"), d = doc(), names = usedNames(d), all = [...new Set([...names, ...Object.keys(d.bindings), ...Object.keys(d.samples)])].sort();
-    const head = [el("h3", {}, "Values"),
+    const head = [el("h3", {}, "Sources"),
+      el("p", { cls: "muted small" }, "Bind Home Assistant entities to named values this screen can use. ", info("Names like market.price can be used in text, colours and conditions, and they update when the entity changes.")),
       el("p", { cls: "hint" }, ha.available ? (ha.connected ? `Connected to Home Assistant${ha.version ? " " + ha.version : ""}. Bound values follow their entities once the screen is sent.` : `Home Assistant: not connected${ha.error ? " (" + ha.error + ")" : ""}.`)
         : "No Home Assistant access (add-on: automatic; Docker: set HA_URL and HA_TOKEN_FILE). Values are just names: publish them yourself, e.g. with the automation below."),
       el("div", { cls: "row" }, el("button", { onclick: () => pickEntity({ for: "text", onPick: () => renderValuesPane() }) }, "+ Bind an entity"),

@@ -1,234 +1,275 @@
-# Editor guide
+# pixel2mqtt guide
 
-This guide covers how to use the pixel2mqtt editor to make animations, icons and info screens for the 52×32 display. To install pixel2mqtt, see the [README](../README.md). Inside pixel2mqtt, the **?** button at the top right opens this guide in a side drawer.
+How to make info screens, animations and icons for the 52×32 display, and how to wire them to Home Assistant.
+To install pixel2mqtt, see the [README](../README.md). Inside pixel2mqtt, the **?** button at the top right opens
+this guide in a side drawer.
 
-All the screenshots come from one example project, **Ringworld**: a close-up of a vast ring-shaped world turning in front of its gas giant, with a dropship heading in, in the spirit of a certain classic sci-fi game menu. The last section walks through how each of its nine layers was made, and between them they use almost every feature of the editor.
+**Contents:** [Getting started](#getting-started) · [Your first screen](#your-first-screen) ·
+[Binding data](#binding-data-the-sources-tab) · [Template screens](#template-screens-groups) ·
+[Exposing settings](#exposing-settings-to-home-assistant) · [Animations and icons](#animations-and-icons) ·
+[Playlists](#playlists-and-the-info-rotation) · [Reference](#reference)
 
-![The editor with the Ringworld project open](guide/editor.png)
+## Getting started
 
-## Projects
+pixel2mqtt has three tabs:
 
-![Start screen](guide/start.png)
+- **Displays**: find displays on the network (**Scan the network**), **Adopt** them (type the 6-digit code shown on
+  the panel) and see the bridge's MQTT and Home Assistant status.
+- **Library**: what's on the selected display (animations, icons, sounds and screens) with previews. Play, show,
+  open in the editor, rename or delete, and see the free storage. **Projects not on this display** lists your
+  projects with **Open** and **Send**.
+- **Editor**: opens on the projects page. Start a **+ New screen** (or **From example…**: Today, Forecast,
+  3D printer, Ticker), a **+ New animation** or a **+ New icon**, import a project file, open a copy of an
+  animation that's on the display, or reopen one of **Your projects**.
 
-The **Editor** tab opens on the project screen.
-
-- **+ New animation** starts a blank 52×32 scene.
-- **+ New icon** starts a small icon. Pick its size from the list next to it first.
-- **Import project file** opens a `.json` file you exported earlier.
-- **Open a copy** starts from an animation that's already on the display. The copy is named "… (copy)", so the original stays untouched until you choose to replace it.
-- **Your projects** lists everything saved in pixel2mqtt. Projects live in pixel2mqtt's data folder (the add-on's `/data` on HA OS), not on the display.
-
-![Renaming a project](guide/dialog.png)
-
-Click the project's name in the bar above the canvas to rename it.
-
-### Save vs Send to display
-
-![Document bar and its menu](guide/docbar.png)
-
-The bar above the canvas shows the project type, its name and its status:
+Projects are saved in pixel2mqtt's data folder (`/data` in the add-on), not on the display. **Save** (and autosave
+every few seconds) keeps a project editable; **Send to display** uploads the finished screen, animation or icon.
+The status next to the project's name says where it stands:
 
 | Status | Meaning |
 |---|---|
 | Draft | Never sent to the display |
-| Changed since sent | The display has an older version |
+| Changed since sent | The display has an older version (Send shows a red dot) |
 | On display | The display has the current version |
 
-- **Save** stores the project in pixel2mqtt. The editor also autosaves every few seconds and when you leave the page, so a work in progress is never lost. The dot after the name means there are unsaved changes.
-- **Send to display** uploads the finished scene to the display. If an animation with that name already exists there and didn't come from this project, you're asked before it's overwritten.
-- The **⋮** menu has Duplicate project, Export project file (a `.pixel2mqtt.json` you can import elsewhere), Export PNG (the current frame) and Delete project.
-- **◂ Projects** saves and goes back to the project screen.
+Click the project's name to rename it. The **⋮** menu has duplicate, export (`.pixel2mqtt.json`, PNG) and delete.
+**◂ Projects** saves and goes back.
 
-## Tools
+**Docker image tags.** `:latest` is the newest release, `:0.4` or `:0.4.3` pin a version, `:edge` follows the main
+branch (finished but not yet released) and `:beta` is the most recently pushed feature branch (experimental). The
+add-on follows releases.
 
-The toolbar sits on the left. Hover a tool to open its settings. On touch screens, tap the tool again instead. Every tool remembers its own settings, so you can switch between a 1-px pencil and a large eraser without changing anything.
+## Your first screen
 
-![Pencil settings: size, tip and colour](guide/flyout-pencil.png)
+![The screen editor with the 3D printer example, mid-print](img/screen-editor.png)
+
+A **screen** is an info screen in the display's Info rotation: text, values from Home Assistant, icons, progress
+bars, sparklines and shapes. pixel2mqtt sends the values whenever they change, so the display stays current.
+Screens need pixeld-h6631 with screen support.
+
+1. **Add elements** from the left: **Text**, **Value** (text that opens the entity picker straight away), **Icon**,
+   **Icon by value** (an icon per state, e.g. the weather), **Progress bar**, **Sparkline**, **Rectangle** or
+   **Line**. Click to add, or drag onto the canvas.
+2. **Place them.** Click to select, drag to move (snaps to the centre lines and other elements; Alt places freely),
+   drag the white handles to resize. **Elements** on the left is the drawing order (top = drawn last): drag to
+   reorder, 👁 hides while editing, 🔒 locks, ⚠ marks a problem (hover for details).
+3. **Style them** in the **Element** tab. Duplicate and delete are the icons in its header.
+   - **Font**: Tiny 3×5, Small 5×7, Big 10×14 and Huge 15×21, each sample drawn as LEDs at the panel's scale, so
+     what you pick is what the panel shows. There are no sizes in between.
+   - **Text** is a template: `{printer.progress|int}%`. **+ Insert value** picks a value and the chips add
+     formatters (Integer, Decimals, Thousands, %, Duration, Temperature, Time, Ago, Upper, Fallback). The result
+     shows underneath.
+   - **Align**, **Vertical**, **Overflow** (clip, scroll or shrink when the text is wider than W) and **Spacing**.
+   - **Colour** and **colour rules**: each rule is `[NOT] [value] [operator]` over `[compare] [colour]`, and the
+     first rule that's true wins (e.g. green when `ticker.change > 0`).
+   - **Show when**: show the element only while a condition holds. Operators without a compare value (*is set*,
+     *has a value*, *is fresh*) take one line.
+   - **Blink**: a toggle that reveals the on/off time in ms.
+4. **Set up the screen** in the **Screen** tab:
+   - **On the display as**: the name in Home Assistant's *Screen* select and in playlists. **Rename** changes it
+     (the project name above the canvas is separate).
+   - **Basics**: time on screen, order in the rotation, background.
+   - **When to show**: **Needs** (values that must exist and be fresh), **Stale after**, **Show only when** and
+     **Keep showing after** (e.g. 30 minutes after a print finishes).
+   - **Group** and **Exposed to HA**: see below. The **.scr** tab shows the file that gets sent.
+5. **Send to display.** The screen is uploaded and its bound values start flowing (batched about once a second,
+   resent every 10 minutes and whenever the display restarts). **Remove from display** takes it off.
+
+**Sample / Live** above the canvas switches the preview between sample values and Home Assistant's live values.
+
+## Binding data: the Sources tab
+
+![The Sources tab: the 3D printer's values bound to states and an attribute](img/sources.png)
+
+**Sources** binds Home Assistant entities to the named values a screen uses. A name like `market.price` can appear
+in text, colours and conditions, and updates when the entity changes. Every name the screen uses is listed:
+**Bind** connects it, **= Fixed** gives it a constant, and the box beside it holds a **sample** for the preview
+(try a state like `finish` without waiting for a real print).
+
+| Kind | Value | Example |
+|---|---|---|
+| State | the entity's state, with its unit | `sensor.outside_temperature` → `[63, "°F"]` |
+| Attribute | one attribute | `weather.home` → `humidity` |
+| History | the last N hours as a list, for a sparkline | 24 h, 48 points |
+| Fixed | a constant | `BTC` |
+| Group | from the group's current member (see below) | the member's `symbol` as *Short symbol* |
+| Forecast | a weather entity's forecast | *Tomorrow* → *High* |
+
+- The **entity picker** searches names, ids, devices, areas and integrations (words in any order), or browses
+  Area → Device → Entity → Attribute.
+- **History** cuts out stretches where nothing changed for over an hour (a closed market, a weekend), so a stock
+  shows its trading sessions back to back. Windows over 10 days come from Home Assistant's long-term statistics.
+  A sparkline's **History window** (1h to 30d, or Custom…) can also be set in its Element panel.
+- **Forecast** periods: now (this hour), today, tonight and up to three days ahead. Fields: temperature (high by
+  day, low at night), high, low, condition and day name.
+
+Home Assistant access is automatic in the add-on. In Docker, set `HA_URL` and `HA_TOKEN_FILE` (see the README).
+Without it, values are plain names: publish them yourself to `<topic>/values/set`, and Sources shows an example
+automation.
+
+## Template screens (groups)
+
+One screen can show any of several similar entities, such as every stock ticker.
+
+1. In **Screen ▸ Group**, tick **Template screen** and choose the members: every entity of an **integration**
+   (e.g. `easy_stock`), a **label**, a **device**, an **entity type** or a list of **entities**. The members show
+   as chips.
+2. In **Sources**, bind each value with **◫ Group**: the member's state, an attribute or its history, with a
+   display form such as *Short symbol* (`^GSPC` → `S&P`, `BTC-USD` → `BTC`), *Price prefix* or *Is crypto*. The
+   member picker at the top previews any member.
+3. **Send to display.** Home Assistant gets a dropdown (the *Dropdown name*) with every member plus **Rotate**, and
+   a number for the rotate time. Rotate steps through the members every N seconds; a member's values change
+   together, and new members appear in the dropdown by themselves.
+
+## Exposing settings to Home Assistant
+
+Any screen setting can become an entity on the display's device in Home Assistant, to change from a dashboard or an
+automation.
+
+- Click the **⌂** next to a field's label (*Expose to Home Assistant*). It lights up, the field gets an accent
+  edge, and a popover sets the entity's **Name** (default "<screen> <setting>") and **Type**: a number (Lowest /
+  Highest / Step, with a unit), a dropdown (options, comma-separated), a switch or text. Click the ⌂ again to edit
+  it or **Stop exposing**.
+- Exposable: font, alignment, overflow, scroll speed, spacing, colour, blink; a bar's range, fill, direction and
+  pulse; a sparkline's shading, dot and **history window**; a rectangle's fill; the screen's time on screen,
+  order, background and stale after.
+- A **history window** is a dropdown of `1h, 6h, 24h, 3d, 7d, 30d` by default. Options like `12h` or `7d` are
+  converted to hours.
+- **Screen ▸ Exposed to HA** lists every entity the screen creates (including a group's dropdown and rotate
+  seconds), with editable names and ↗ links to their fields.
+
+After **Send to display**, a change in Home Assistant is checked against the range or options, saved, and on the
+display within a second or two (a history window resends the sparkline). Opening or sending the screen in the
+editor picks up what Home Assistant changed, so a Send doesn't undo it. Stopping exposure, or removing the screen,
+removes the entity. Renaming a screen creates new entities.
+
+## Animations and icons
+
+![The animation editor with the Ringworld project](guide/editor.png)
+
+The screenshots here come from one project, **Ringworld**: a ring-shaped world turning in front of its gas giant,
+with a dropship heading in. Its recipe is in the [reference](#worked-example-ringworld).
+
+### Tools
+
+Hover a tool for its settings (on touch screens, tap it again). Each tool keeps its own settings.
 
 | Tool | Key | Settings |
 |---|---|---|
 | Pencil | P | size, square or round tip, colour |
 | Eraser | E | size, tip |
-| Fill (bucket) | F | colour. Fills the connected area of the same colour |
+| Fill | F | colour; fills the connected area of one colour |
 | Line | L | size, tip, colour |
-| Shape | S | shape, outline or filled, outline width, colour |
-| Eyedropper | I | picks a colour off the canvas for the tool you used before it, then switches back to that tool |
-| Move | M | drags the layer around; arrow keys nudge it by a pixel |
-
-- Each tool's icon shows its current colour, and the cursor shows the tool you're using.
-- `[` and `]` change the brush size, and Space plays or pauses.
-- Right-click erases with the pencil and line tools.
-- Ctrl+Z undoes and Ctrl+Y (or Ctrl+Shift+Z) redoes.
-
-### Colours
+| Shape | S | rectangle, oval, triangle, diamond or trapezoid; outline or filled; Shift keeps it square |
+| Eyedropper | I | picks a colour for the previous tool, then switches back |
+| Move | M | drags the layer; arrow keys nudge it |
 
 ![Colour picker and recent colours](guide/picker.png)
 
-Click the colour swatch in a tool's settings to open the picker: drag in the square for the shade and along the bar for the hue. You can also type a hex code such as `#ff8800` or `#f80`. Below it, the palette keeps the **last 18 colours you painted with**, newest first, topped up with a default set until you've used 18.
+The colour picker takes a drag or a hex code (`#ff8800`, `#f80`); its palette keeps your last 18 colours. Shapes
+can be dragged past the canvas edge (Ringworld's planet is a big oval showing only its corner).
 
-### Shapes
-
-![Shape settings](guide/flyout-shape.png)
-
-The **Shape** tool draws a rectangle, oval, triangle, diamond or trapezoid inside the box you drag, as an outline or filled. Hold **Shift** to keep it square or round. You can drag beyond the edge of the canvas: Ringworld's planet is a big oval that only shows its top-right corner.
-
-## Layers
+### Layers
 
 ![Layers panel](guide/layers.png)
 
-A scene is a stack of layers. The top of the list is drawn on top. The eye icon hides a layer while you edit, and the small tags show what each layer does (frames, motion, tile, blink).
+A scene is a stack of layers; the top of the list is drawn on top. Add **+ Blank**, **+ Image** (PNG or GIF; a GIF
+keeps its frames), **+ From display** (the panel's current frame) or **+ Icon**. **Duplicate**, **▲ ▼**, **Clear**
+(Shift+click: every frame) and **Delete** act on the selected layer. **Background** is the colour behind everything
+(icons can be transparent).
 
-- **Duplicate**, **▲ ▼** (move up or down the stack), **Clear** and **Delete** act on the selected layer. **Clear** empties the current frame; Shift+click clears every frame of the layer.
-- **Add a layer:** **+ Blank**, **+ Image** (a PNG or GIF from your computer; a GIF keeps its frames), **+ From display** (whatever the display is showing right now) or **+ Icon** (an icon from the display's library).
-- **Background** is the colour behind every layer. Click its swatch to pick it. Icons can use a **transparent** background instead.
+![Layer settings: a 26-pixel tile drifting left](guide/layer-motion.png)
 
-![Background colour](guide/bg-picker.png)
+The **Layer** panel:
 
-### Layer settings
-
-![Layer settings for the Stars layer: a 26-pixel tile drifting left](guide/layer-motion.png)
-
-The **Layer** panel holds the selected layer's settings:
-
-- **Name**.
-- **X / Y**: where the layer's top-left corner sits. Layers can be smaller or larger than the screen, and can hang off its edges.
-- **W / H**: the layer's size. Type a new size, then press:
-  - **Crop / extend** to keep the pixels as they are, cutting off or adding empty space on the right and bottom;
-  - **Scale** to resize the picture to fit (nearest-neighbour, so pixel art stays crisp).
-
-  A layer can be up to 256 × 256, which is how you make a long scrolling background that doesn't repeat every 52 pixels. The canvas is a workspace around the panel (the white box, also called the viewport). Outside it, the other layers are dimmed and the selected layer is shown at full brightness, so you can draw the parts that scroll in later. A tiled layer shows one whole tile there, starting from the panel's top-left corner.
-  - **Zoom** with the mouse wheel (around the cursor), the **−** / **+** buttons at the bottom right of the canvas, or the − and + keys.
-  - **Pan** by dragging with the middle mouse button, with Alt + drag, or with the **✋** button (H) switched on.
-  - **⌖ Recenter on viewport** (0) fits the panel in the middle again.
-  - **Hide outside viewport**, next to Live on display, shows the panel only. Drawing outside it then does nothing.
-- **Tile** repeats the layer across the whole screen, so a moving layer wraps around instead of sliding off.
-- **Motion** (the arrow pad) and **Speed** scroll the layer in one of eight directions. To keep the loop seamless, the speed is adjusted slightly so the layer wraps around a whole number of times per loop. A small tiled layer can scroll more slowly than a full-width one: Ringworld's stars are a 26-pixel tile, so they drift at about 4 px/s.
-- **Opacity**: how solid the layer is, from 100 % (covers what's underneath) to 0 % (invisible). In between, the layer is blended with the layers below it, which is good for haze, glows, shadows and nebulae. The display has no see-through pixels of its own; the blending is worked out when the scene is sent.
-- **Blink** switches the layer on and off every so many milliseconds (0 = off). One blink cycle is on plus off, so twice the blink time.
+- **X / Y** and **W / H**: a layer can be any size up to 256×256 and hang off the edges. After typing a size,
+  **Crop / extend** keeps the pixels and **Scale** resizes the picture. A layer wider than the panel scrolls
+  without repeating every 52 pixels: the canvas is a workspace around the panel (the white box), with zoom
+  (wheel, − / +), pan (middle mouse, Alt + drag, ✋), **⌖ Recenter on viewport** and **Hide outside viewport**.
+- **Tile** repeats the layer across the screen; **Motion** and **Speed** scroll it in one of eight directions.
+  Speeds are adjusted slightly so every layer wraps a whole number of times per loop.
+- **Opacity** blends the layer with the ones below (worked out when the scene is sent). **Blink** switches it on
+  and off every N ms.
 
 | Opacity 100 % | Opacity 55 % |
 |---|---|
-| ![Nebula at full opacity](guide/nebula-100.png) | ![Nebula at 55 %: the stars behind show through](guide/nebula-55.png) |
+| ![Nebula at full opacity](guide/nebula-100.png) | ![Nebula at 55 %](guide/nebula-55.png) |
 
-## Frames
+### Frames and loops
 
 ![Playback bar, loop hint and frames](guide/frames.png)
 
-Each layer has its own frames, so a turning ring, a blinking star and a still planet can share a scene.
-
-- The number under each frame is how long it stays up, in milliseconds.
-- To give every frame of the selected layer the same duration, type it next to **Frames** and press **Set all frames** (or Enter).
-- **+ blank** adds an empty frame, and **duplicate** copies the current one, which is the quickest way to animate small changes.
-- **◀ ▶** reorder frames and **✕** deletes one.
-- **Onion skin** faintly shows the previous frame while you draw.
-- ▶ plays the whole scene. The slider scrubs through it.
-
-### Shifting pixels and making frames
+Each layer has its own frames, each with its own duration (the number under it, in ms). **Set all frames** gives
+them one duration, **+ blank** and **duplicate** add frames, **◀ ▶** reorder, **✕** deletes, and **Onion skin**
+shows the previous frame faintly.
 
 ![Shift tools](guide/shift.png)
 
-**⇆ shift** opens two tools:
+**⇆ shift** moves pixels one step (with or without wrap-around; Shift + arrows does the same). **Make frames** adds
+a run of frames, each moved a further x, y, and **fit loop** picks the count that flows back into the first frame.
 
-- **Shift pixels** moves this frame (or all frames) one pixel left, up, down or right. With **wrap around** on, whatever leaves one edge comes back in at the other. **Shift + arrow keys** do the same from the keyboard.
-- **Make frames** adds a run of frames after the current one, each moved a further x, y pixels: the quick way to animate clouds, water, comets or a scrolling texture. **fit loop** picks the count where the last frame flows straight back into the first. For example, a 32×16 layer moving −2, 1 each frame comes back round after 16 frames.
+The loop hint next to the time says **✓ loops seamlessly**, **ⓘ loop stretched** (made longer than the longest
+layer so everything fits) or **⚠ … won't loop evenly** (that layer jumps). Hover it for each layer's breakdown.
 
-### Seamless loops
-
-The scene loops once every layer's frames and blinks have repeated a whole number of times. The hint next to the time tells you how it went:
-
-- **✓ loops seamlessly**: everything fits.
-- **ⓘ loop stretched**: the loop had to be made longer than the longest layer so everything fits. That's fine, but check it isn't longer than you meant.
-- **⚠ … won't loop evenly**: that layer jumps at the loop point.
-
-Hover the hint for each layer's breakdown. In Ringworld, everything is built around a 6.4 s loop: 64 frames × 100 ms for the ring, 16 × 400 ms for the comet, and blinks of 800 and 1600 ms (cycles of 1.6 and 3.2 s).
-
-## Icons
+### Icons
 
 ![An icon project](guide/icon.png)
 
-An icon project is a single small image (8×8 to 32×32, or any size up to 52×32 with **custom…**) for info screens and notifications. Icons can have several frames and a transparent background. Animation-only controls such as motion, blink and the live preview are hidden. To change the size later, use **⋮ → Change icon size…**. Layers keep their pixels; nothing is stretched.
+An icon is a small image for screens and notifications. It can have several frames and a transparent background.
+New icons start at 16×16; change the size with **Size** in the Layers card (8×8 to 32×32, or **custom…** up to
+52×32). Layers keep their pixels; nothing is stretched.
 
-![Changing an icon's size](guide/dialog-iconsize.png)
+### Testing on the display
 
-## Screens
+With a display adopted:
 
-A **screen** is an info screen for the display's Info rotation: text, values from Home Assistant, icons, progress
-bars, sparklines and shapes, laid out on the 52×32 panel. The display keeps them up to date: pixel2mqtt sends the
-values whenever they change in Home Assistant. Screens need a display running pixeld-h6631 with screen support.
+- **Live on display** streams the canvas (or the screen preview) to the panel at about 30 fps while you work.
+- **Test on the display** plays any animation or music style straight away, without touching your project.
+- **+ From display** grabs the panel's current frame as a layer.
 
-Start one with **+ New screen**, or **From example…** (Today, Forecast, 3D printer and Ticker) on the Projects page.
+## Playlists and the Info rotation
 
-- **Add** an element from the left: **Text**, **Value** (a text that opens the entity picker straight away),
-  **Icon**, **Icon by value** (a different icon for each state, e.g. the weather), **Progress bar**, **Sparkline**,
-  **Rectangle** or **Line**. Click to add it, or drag it onto the canvas.
-- On the canvas, **click** to select, **drag** to move (it snaps to the panel's centre lines and to other elements'
-  edges; hold Alt to place it freely) and drag the white handles to resize. Arrow keys nudge by 1 pixel, Shift +
-  arrows by 5, Delete removes it, Ctrl+Z undoes.
-- **Elements** (left) lists them in drawing order, top = drawn last. Drag to reorder, 👁 hides one while editing
-  (it's still sent), 🔒 stops it moving. ⚠ marks a problem: hover for details.
-- The **Element** tab sets position and size, the **font** (Tiny 3×5, Small 5×7, Big 10×14, Huge 15×21: the panel
-  has no sizes in between), alignment within the box, what happens when the text is too wide (clip, scroll or
-  shrink), the colour, **colour rules** (e.g. green when a price is up) and **Show when** (e.g. only while printing).
-- Text is a **template**: `{printer.progress|int}%` shows a value run through formatters. **+ Insert value** picks
-  one, and the chips add formatters: Integer, Decimals, Thousands, %, Duration, Temperature, Time, Ago, Upper and
-  Fallback. The result shows underneath as you type.
-- **Values** lists every value the screen uses. **Bind** connects one to a Home Assistant entity: its state, one of
-  its attributes, or its **history** (for sparklines). A weather entity also offers its **forecast**: now (this hour), today, tonight or up to three days ahead, as temperature, high, low, condition or day name, with the temperature unit attached. The entity picker searches names, ids, devices, areas and
-  integrations (words in any order), or browses Area → Device → Entity. Each value also has a **sample**, so you can
-  try states like `finish` without waiting for a real print. **Sample / Live** at the top switches the preview
-  between samples and Home Assistant's live values.
-- **Screen** holds the screen's settings: its name in Home Assistant's *Screen* select, the values it **needs**
-  before it shows, **Show when**, **Keep showing after** (e.g. 30 minutes after a print finishes), when values count
-  as stale, time on screen, order in the rotation and background. **.scr** shows the file that gets sent.
-- **Send to display** uploads the screen and starts sending its bound values (batched, about once a second, and
-  again whenever the display restarts). **Remove from display** takes it off and stops its values.
+- In **Info** mode the display cycles through every screen whose *Needs*, *Show only when* and *Keep showing after*
+  allow it, in **order**, each for its **time on screen** (default: the display's *Info rotate* setting).
+- Home Assistant's **Screen** select pins one screen (*Auto* = the rotation). A pinned screen shows even when its
+  rules say no.
+- In **Playlist** mode the display runs its *Playlist* setting: `kind[:arg]:seconds` items separated by commas,
+  e.g. `clock:30,info:40,animation:Moon:20,screen:Ticker:20`. `screen:<name>` uses the name from **On the display
+  as**. Set it from Home Assistant or with `<topic>/playlist/set`.
 
-**Template screens (groups).** One screen can show any of several similar entities, such as every stock ticker. In
-**Screen**, turn on **Group** and pick the members: every entity of an integration (e.g. `easy_stock`), a label, a
-device, an entity type or a list. Then, in **Values**, take each value from the group with **◫ Group** (state, an
-attribute or history, with display forms such as *Short symbol* `^GSPC → S&P`). The member picker at the top of
-Values previews any member. After **Send to display**, Home Assistant gets a dropdown with every member plus
-**Rotate**, and a number for the rotate time. Rotate steps through the members every N seconds, all of a member's
-values change together, and new members (a new ticker in Easy Stock) appear in the dropdown by themselves.
+## Reference
 
-**Home Assistant controls.** Any screen setting can become an entity on the display's device in Home Assistant. Tick it
-under **Control from Home Assistant**: element settings (font, alignment, colour, blink, a bar's range, a sparkline's
-shading, ...) are in the element's panel, and screen settings (time on screen, order, background, stale after, and
-each sparkline's history window) are in **Screen**. Each control has a name (default "<screen> <setting>", e.g.
-*Market chart history*) and a type: a number (min, max, step, unit), a dropdown (options, comma-separated), a switch
-or text. A history window is a dropdown by default (1h, 6h, 24h, 3d, 7d, 30d; options like `12h` or `7d` are converted to
-hours), and a sparkline's panel links to it. After **Send to display**, a change in Home Assistant is checked against that range or list, saved, and on
-the display within a second or two (a history window resends the sparkline). Opening or sending the screen in the editor
-picks up what Home Assistant changed, so a Send doesn't undo it. Unticking a control, or deleting the screen, removes its entity. A group's member
-dropdown and rotate time are built-in controls of the same kind.
+### Shortcuts
 
-MQTT: discovery under `<prefix>/<number|select|switch|text>/<display>/scr_<screen>_<setting>/config`, commands on
-`<topic>/control/<screen>/<setting>/set`, state on `.../state`. Unique ids are `<display>_scr_<screen>_<setting>`, so
-renaming a screen makes new entities.
+| Where | Keys |
+|---|---|
+| Everywhere | Ctrl+Z undo, Ctrl+Y or Ctrl+Shift+Z redo, Space play/pause |
+| Animation editor | P E F L S I M tools, `[` `]` brush size, right-click erases, Shift + arrows shift pixels, H pan, 0 recenter, − + zoom |
+| Screen editor | arrows nudge 1 px, Shift + arrows 5 px, Delete removes, Alt + drag places without snapping |
 
-Home Assistant access is automatic in the add-on. In Docker, set `HA_URL` and `HA_TOKEN_FILE` (see the README).
-Without it, values are plain names: publish them yourself to `<topic>/values/set`, and the Values tab shows an
-example automation.
+### MQTT for exposed settings
 
-## Testing on the display
+- Discovery: `<prefix>/<number|select|switch|text>/<display>/scr_<screen>_<setting>/config`.
+- Commands: `<topic>/control/<screen>/<setting>/set`; state: `<topic>/control/<screen>/<setting>/state`.
+- Unique ids: `<display>_scr_<screen>_<setting>`. A group's dropdown and rotate number keep their own ids
+  (`<display>_grp_<screen>`, `…_rotate`) and topics (`<topic>/group/<screen>/select`, `…/rotate`).
+- Values for screens: `<topic>/values/set` with a flat JSON object, e.g. `{"market.price": 6919.95}`.
 
-These need a display adopted on the **Displays** tab:
-
-- **Live on display** (above the canvas) streams the canvas to the panel at about 30 fps while you work, including playback.
-- **Test on the display** plays any animation or music style on the panel straight away, without changing the project you're editing.
-- **+ From display** grabs whatever the panel is showing as a new layer, and **+ Icon** adds one of the display's icons as a layer.
-
-## Worked example: Ringworld
+### Worked example: Ringworld
 
 From the bottom of the stack up:
 
-1. **Background**: set to a near-black blue with the background swatch.
-2. **Stars**: Layer 1, cropped to 26×32 with **Crop / extend**, then dotted with stars using the pencil. With **Tile** on and Motion **←**, it drifts slowly behind everything.
-3. **Nebula**: a few strokes with a size-6 **round** pencil in three purples, then **Opacity** 55 % so the stars show through.
-4. **Planet**: an **outline oval** from the Shape tool, dragged far beyond the bottom-left corner, filled with the **bucket**, with two darker bands from the **Line** tool. The **eyedropper** then picked up the rim colour for the pencil, and a round brush thickened the lit edge.
-5. **Comet**: a 32×16 layer (**Crop / extend**) with a six-pixel streak. **Make frames** moved it −2, 1 per frame, **fit loop** made it 16 frames, and **Set all frames** gave each 400 ms.
-6. **Dropship**: a 32×12 gunmetal dropship drawn in an image editor and added with **+ Image**, **Scale**d down to 16×6, extended to 52×32, pushed down 25 pixels with **Shift pixels**, then set to **Tile** and Motion **→** so it flies across in front of the planet. **▼** moved it below the ring, so it passes behind the land.
-7. **Ring inner surface** and 8. **Ring hull**: the showpiece. These are two layers of 64 frames each (100 ms), with the hull's plating and the land rising behind it turned a little further round every frame. It's the most work in the scene. For simpler scrolling textures, **Make frames** does it for you.
-9. **Twinkle A** (three stars, **Blink** 800 ms), then **Duplicate**d to make **Twinkle B**, nudged to new spots with **Shift + arrow keys**, and given a slower blink of 1600 ms.
+1. **Background**: a near-black blue.
+2. **Stars**: a 26×32 layer (**Crop / extend**) dotted with the pencil, **Tile** on, Motion **←**, drifting at
+   about 4 px/s.
+3. **Nebula**: a size-6 round pencil in three purples, **Opacity** 55 %.
+4. **Planet**: an outline oval dragged far past the bottom-left corner, filled with the bucket, two darker bands
+   from the Line tool, the rim colour picked up with the eyedropper and thickened with a round brush.
+5. **Comet**: a 32×16 layer with a six-pixel streak; **Make frames** −2, 1, **fit loop** (16 frames), **Set all
+   frames** 400 ms.
+6. **Dropship**: drawn elsewhere, added with **+ Image**, **Scale**d to 16×6, extended to 52×32, shifted down,
+   then **Tile** and Motion **→**; **▼** puts it behind the ring.
+7. **Ring inner surface** and 8. **Ring hull**: 64 frames each at 100 ms, turned a little further every frame.
+9. **Twinkle A** (Blink 800 ms), duplicated as **Twinkle B**, nudged with Shift + arrows, Blink 1600 ms.
 
-The loop hint shows **✓ loops seamlessly** at 6.4 s. **Save** while working, then **Send to display** when it's done.
+Everything fits a 6.4 s loop: 64 × 100 ms, 16 × 400 ms, and blink cycles of 1.6 and 3.2 s.

@@ -2,6 +2,25 @@
 // pixel2mqtt web editor. No build step, no external libraries.
 const $ = s => document.querySelector(s);
 const PW = 52, PH = 32, FRAME = PW * PH * 3;
+// LEDs as the panel shows them: square dots with a black gap, unlit (black) LEDs very dark grey. Below 3 px per LED
+// there's no room for a gap, so plain pixels. px: RGB (stride 3) or RGBA (stride 4), w x h LEDs, s px per LED.
+const LED_OFF = 22;   // #161616
+const ledGap = s => Math.max(1, Math.round(s / 8));   // the black gap: about an eighth of the LED pitch
+function drawLEDs(g, px, stride, w, h, s, x0 = 0, y0 = 0) {
+  if (s < 3) {
+    const img = new ImageData(w, h);
+    for (let i = 0, j = 0; j < w * h * 4; i += stride, j += 4) { img.data[j] = px[i]; img.data[j + 1] = px[i + 1]; img.data[j + 2] = px[i + 2]; img.data[j + 3] = 255; }
+    return g.putImageData(img, x0, y0);
+  }
+  g.fillStyle = "#000"; g.fillRect(x0, y0, w * s, h * s);
+  const d = s - ledGap(s);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * stride, r = px[i], gg = px[i + 1], b = px[i + 2];
+    g.fillStyle = r || gg || b ? `rgb(${r},${gg},${b})` : "#161616";
+    g.fillRect(x0 + x * s, y0 + y * s, d, d);
+  }
+}
+const PREV_S = 4;   // Library previews: 208 x 128
 
 /* ------------------------------------------------------------------ helpers */
 async function api(path, opts = {}) {
@@ -223,9 +242,7 @@ async function previewAnim(f) {
     const a = parsePXA(await api(`/displays/${cur}/files/anims/${enc(f.name)}?size=${f.size}`));
     const img = new ImageData(PW, PH), t0 = performance.now();
     prevTimer = setInterval(() => {
-      const fr = frameAt(a, performance.now() - t0).rgb;
-      for (let i = 0, j = 0; i < FRAME; i += 3, j += 4) { img.data[j] = fr[i]; img.data[j + 1] = fr[i + 1]; img.data[j + 2] = fr[i + 2]; img.data[j + 3] = 255; }
-      c.putImageData(img, 0, 0);
+      drawLEDs(c, frameAt(a, performance.now() - t0).rgb, 3, PW, PH, PREV_S);
     }, 33);
   } catch (e) { toast(e.message, true); }
 }
@@ -266,8 +283,7 @@ async function previewScreen(f) {
     const img = new ImageData(PW, PH);
     scrTimer = setInterval(() => {
       const fb = ScreenRender.render(scr, { values, icons, now: now(), fahrenheit: flag(/fahrenheit/i), h12: flag(/12.?h/i) });
-      for (let i = 0, j = 0; i < FRAME; i += 3, j += 4) { img.data[j] = fb[i]; img.data[j + 1] = fb[i + 1]; img.data[j + 2] = fb[i + 2]; img.data[j + 3] = 255; }
-      c.putImageData(img, 0, 0);
+      drawLEDs(c, fb, 3, PW, PH, PREV_S);
     }, 100);
   } catch (e) { toast(e.message, true); }
 }
