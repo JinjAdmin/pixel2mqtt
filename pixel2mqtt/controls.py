@@ -14,6 +14,26 @@ COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 DUR_RE = re.compile(r"^\d+[smhd]$")
 PARAM_RE = re.compile(r"^(screen\.(time|order|bg|stale)|el\.[A-Za-z0-9_-]{1,40}\.[a-z]{1,12}|value\.[a-z0-9_.-]{1,31}\.hours)$")
 COLOR_KEYS = ("color", "fill", "bg")
+MAX_HOURS = 24 * 366
+HOURS_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([hd]?)\s*$", re.I)
+
+
+def is_hours(c):
+    return c["param"].startswith("value.")
+
+
+def parse_hours(s):
+    """'12h', '7d', '24' -> hours (a number), or None."""
+    m = HOURS_RE.match(str(s))
+    if not m:
+        return None
+    h = float(m.group(1)) * (24 if m.group(2).lower() == "d" else 1)
+    return _whole(h) if 0 < h <= MAX_HOURS else None
+
+
+def fmt_hours(h):
+    h = _whole(float(h))
+    return f"{_whole(h / 24)}d" if h >= 48 and h % 24 == 0 else f"{h}h"
 
 
 def _f(v, default):
@@ -47,10 +67,13 @@ def clean_controls(items):
             k.update(min=_whole(min(lo, hi)), max=_whole(max(lo, hi)), step=_whole(_f(c.get("step"), 1) or 1), unit=str(c.get("unit") or "")[:8])
         if t == "select":
             opts = [str(o).strip()[:40] for o in (c.get("options") or []) if str(o).strip()]
+            if p.startswith("value."):
+                opts = [o for o in opts if parse_hours(o) is not None]
             if not opts:
                 continue
             k["options"] = list(dict.fromkeys(opts))[:50]
-        k["value"] = c.get("value")
+        if not p.startswith("value."):
+            k["value"] = c.get("value")
         out.append(k)
     return out
 
@@ -59,6 +82,15 @@ def coerce(c, raw):
     """A command payload -> the value to store, or None if it isn't valid for this control."""
     raw = str(raw).strip()
     t, key = c["type"], c["param"].rsplit(".", 1)[-1]
+    if is_hours(c):
+        if t == "select" and raw not in c["options"]:
+            return None
+        h = parse_hours(raw)
+        if h is None:
+            return None
+        if t == "number":
+            h = max(float(c["min"]), min(float(c["max"]), h))
+        return _whole(max(1, min(MAX_HOURS, h)))
     if t == "number":
         try:
             v = max(float(c["min"]), min(float(c["max"]), float(raw)))
@@ -82,6 +114,8 @@ def state_text(c, v):
     """The value as HA expects it on the state topic."""
     if v is None:
         return ""
+    if is_hours(c) and c["type"] != "number":
+        return next((o for o in c.get("options", []) if parse_hours(o) == parse_hours(v)), fmt_hours(v))
     if c["type"] == "switch":
         return "ON" if v in (True, 1, "1", "true", "on") else "OFF"
     return str(_whole(v)) if isinstance(v, float) else str(v)

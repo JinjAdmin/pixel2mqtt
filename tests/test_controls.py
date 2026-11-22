@@ -136,6 +136,29 @@ with tempfile.TemporaryDirectory() as tmp:
     ok("group select keeps its unique_id and topics", sel.get("uniq_id") == "p2m_d1_grp_market_chart" and sel.get("cmd_t") == "pixel2mqtt/desk/group/market_chart/select", sel)
     ok("rotate number keeps its unique_id and topics", rot.get("uniq_id") == "p2m_d1_grp_market_chart_rotate" and rot.get("cmd_t") == "pixel2mqtt/desk/group/market_chart/rotate", rot)
     ok("group screens take controls too", "homeassistant/number/p2m_d1/scr_market_chart_value_m_spark_hours/config" in mq.pub)
+    # the reported bug: a history window as a select. State must follow the applied window, hours stay numbers.
+    win = {"param": "value.m.spark.hours", "name": "Chart window", "type": "select", "options": ["24", "168", "720"], "value": 24}
+    b.activate("d1", "Market chart", {"m.spark": {"kind": "group", "source": "history", "hours": 24}}, {"name": "Market ticker", "by": "integration", "match": "x", "rotate": 8}, [win], TICK)
+    st_t = "pixel2mqtt/desk/control/market_chart/value_m_spark_hours/state"
+    for opt in ("168", "720", "24"):
+        b.set_control("d1", "Market chart", "value.m.spark.hours", opt)
+        h = b.screens("d1")["Market chart"]["m.spark"]["hours"]
+        ok(f"select {opt}: hours stored as a number, state follows", h == int(opt) and not isinstance(h, str) and mq.pub[st_t] == opt, (h, mq.pub[st_t]))
+    ok("no stale stored value for a history control", "value" not in b.controls("d1", "Market chart")[0])
+    b.set_control("d1", "Market chart", "value.m.spark.hours", "720")
+    b2 = Bindings(pathlib.Path(tmp), mgr, ha)
+    mq.pub[st_t] = "?"
+    b2.publish_groups("d1")
+    ok("after a restart the state is the applied window", mq.pub[st_t] == "720", mq.pub[st_t])
+    b.activate("d1", "Market chart", {"m.spark": {"kind": "group", "source": "history", "hours": 48}}, {"name": "Market ticker", "by": "integration", "match": "x", "rotate": 8}, [win], TICK)
+    sc = json.loads(mq.pub["homeassistant/select/p2m_d1/scr_market_chart_value_m_spark_hours/config"])
+    ok("editor sends a window that isn't an option: state is still valid in HA", mq.pub[st_t] == "2d" and "2d" in sc["ops"], (mq.pub[st_t], sc["ops"]))
+    fr = dict(win, options=["1h", "6h", "24h", "3d", "7d", "30d", "bogus"])
+    b.activate("d1", "Market chart", {"m.spark": {"kind": "group", "source": "history", "hours": 24}}, {"name": "Market ticker", "by": "integration", "match": "x", "rotate": 8}, [fr], TICK)
+    ok("friendly options: bad ones dropped", b.controls("d1", "Market chart")[0]["options"] == ["1h", "6h", "24h", "3d", "7d", "30d"] and mq.pub[st_t] == "24h")
+    b.set_control("d1", "Market chart", "value.m.spark.hours", "7d")
+    ok("'7d' -> 168 hours, state '7d'", b.screens("d1")["Market chart"]["m.spark"]["hours"] == 168 and mq.pub[st_t] == "7d")
+    ok("parse_hours", [ctl.parse_hours(x) for x in ("12h", "3d", "36", "0", "x", "1.5h")] == [12, 72, 36, None, None, 1.5])
     b.rename_screen("d1", "Market chart", "Markets")
     ok("rename moves the entities", mq.pub.get("homeassistant/select/p2m_d1/grp_market_chart/config") == "" and "homeassistant/select/p2m_d1/grp_markets/config" in mq.pub
        and mq.pub.get("homeassistant/number/p2m_d1/scr_market_chart_value_m_spark_hours/config") == "" and b.controls("d1", "Markets"))

@@ -330,15 +330,16 @@ const Screens = (() => {
   const isOpen = () => !!st;
   async function send() {
     if (!cur) return toast("Adopt a display first", true);
+    await syncControls();   // pick up changes made in Home Assistant first, so this send doesn't undo them
     const c = compile(doc());
     const errs = R.parse(c.text, st.name).errors;
     if (errs.length && !await ask(`This screen has ${errs.length} problem${errs.length > 1 ? "s" : ""} (see the list under the canvas). The display skips those lines. Send anyway?`, { ok: "Send" })) return;
-    const names = usedNames(doc()), bindings = {};
+    const names = usedNames(doc()), bindings = {}, ctls = controlsForSend(c.lineOf);
     for (const n of names) if (doc().bindings[n]) bindings[n] = doc().bindings[n];
     try {
       await save(true);
-      await api(`/displays/${cur}/screens/${enc(st.name)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scr: c.text, bindings, group: groupOf(), controls: controlsForSend(c.lineOf) }) });
-      st.sent = { as: st.name, rev: st.rev }; await save(true); syncDoc();
+      await api(`/displays/${cur}/screens/${enc(st.name)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scr: c.text, bindings, group: groupOf(), controls: ctls }) });
+      st.sent = { as: st.name, rev: st.rev, ctl: Object.fromEntries(ctls.map(x => [x.param, x.value])) }; await save(true); syncDoc();
       const unbound = names.filter(n => !doc().bindings[n]);
       toast(`"${st.name}" is on the display` + (Object.keys(bindings).length ? `, with ${Object.keys(bindings).length} value${Object.keys(bindings).length > 1 ? "s" : ""} from Home Assistant` : "") +
         (unbound.length ? `. Not bound: ${unbound.join(", ")}` : ""));
@@ -709,7 +710,15 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
         field("Empty part", colorInput(e, "bg", { optional: true, placeholder: "none" })),
         field("Direction", choice(e, "dir", ["right", "left", "up", "down"], ["→", "←", "↑", "↓"])), check(e, "pulse", "Blink the leading edge"));
     }
-    if (e.type === "spark") kids.push(field("Series", valueField(e, "series", "spark"), "a list value, e.g. a History binding"), check(e, "area", "Shade under the line"), check(e, "dot", "Blink the newest point"));
+    if (e.type === "spark") {
+      kids.push(field("Series", valueField(e, "series", "spark"), "a list value, e.g. a History binding"), check(e, "area", "Shade under the line"), check(e, "dot", "Blink the newest point"));
+      const b = doc().bindings[e.series];
+      if (b && (b.kind === "history" || (b.kind === "group" && b.source === "history"))) {
+        const on = (doc().controls || []).some(c => c.param === `value.${e.series}.hours`);
+        kids.push(el("p", { cls: "hint" }, `History window: last ${b.hours} h${on ? ", controlled from Home Assistant" : ""}. `,
+          el("button", { cls: "small", onclick: () => setTab("screen") }, on ? "Edit the control" : "Control it from Home Assistant…")));
+      }
+    }
     if (e.type === "rect") kids.push(check(e, "fill", "Filled"));
     if (e.type !== "bar") kids.push(el("div", { cls: "tp-label" }, "Colour"), colorRules(e));
     else kids.push(el("div", { cls: "tp-label" }, "Colour (when no fill is set)"), colorRules(e));
@@ -729,6 +738,7 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
   const sel_ = (opts) => ({ type: "select", options: opts });
   const nm = (min, max, step, unit) => ({ type: "number", min, max, step, unit });
   const colorDef = v => ({ type: "select", options: [...new Set([v || "#ffffff", ...SWATCHES])] });
+  const HOURS_PRESETS = ["1h", "6h", "24h", "3d", "7d", "30d"];
   // every setting that can be a control: {param, label, def, get, set}
   function elementParams(e) {
     const P = (k, label, def, get, set) => ({ param: `el.${e.id}.${k}`, label, def, get: get || (() => e[k]), set: set || (v => { e[k] = v; }) });
@@ -755,7 +765,7 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
     const out = [P("time", "time on screen", nm(2, 600, 1, "s")), P("order", "order", nm(0, 999, 1, "")), P("bg", "background", colorDef(s.bg)), P("stale", "stale after", { type: "text" })];
     for (const [n, b] of Object.entries(doc().bindings))
       if (b && (b.kind === "history" || (b.kind === "group" && b.source === "history")))
-        out.push({ param: `value.${n}.hours`, label: `${n} history`, def: nm(1, 720, 1, "h"), get: () => b.hours, set: v => { b.hours = v; } });
+        out.push({ param: `value.${n}.hours`, label: `${n} history`, def: { type: "select", options: HOURS_PRESETS.slice() }, get: () => +b.hours, set: v => { b.hours = +v; } });
     const hist = out.filter(p => p.param.startsWith("value."));
     if (hist.length === 1) hist[0].label = "history";
     return out;
@@ -777,13 +787,18 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
       box.append(el("label", { cls: "small" }, on, " " + p.label));
       if (!c) continue;
       const type = el("select", {}, ...["number", "select", "switch", "text"].map(t => el("option", { value: t }, t))); type.value = c.type;
-      type.addEventListener("change", () => { edit(() => { c.type = type.value; if (c.type === "select" && !c.options) c.options = [String(p.get() ?? "")]; if (c.type === "number" && c.min === undefined) Object.assign(c, nm(0, 100, 1, "")); }); renderInspector(); renderScreenPane(); });
+      const hrs = p.param.startsWith("value.");
+      type.addEventListener("change", () => { edit(() => { c.type = type.value; if (c.type === "select" && !c.options) c.options = hrs ? HOURS_PRESETS.slice() : [String(p.get() ?? "")]; if (c.type === "number" && c.min === undefined) Object.assign(c, hrs ? nm(1, 720, 1, "h") : nm(0, 100, 1, "")); }); renderInspector(); renderScreenPane(); });
       const row = el("div", { cls: "row wrap ctlrow" }, field("Name", txt(c, "name")), field("Type", type));
-      if (c.type === "number") row.append(field("Min", num(c, "min")), field("Max", num(c, "max")), field("Step", num(c, "step")), field("Unit", txt(c, "unit")));
+      if (c.type === "number") {
+        const u = c.unit ? ` (${c.unit})` : "";
+        row.append(field("Lowest" + u, num(c, "min")), field("Highest" + u, num(c, "max")), field("Step", num(c, "step")), field("Unit", txt(c, "unit")),
+          el("p", { cls: "hint" }, "The range allowed in Home Assistant."));
+      }
       if (c.type === "select") {
         const o = el("input", { type: "text", value: (c.options || []).join(", "), spellcheck: "false" });
         o.addEventListener("change", () => edit(() => { c.options = o.value.split(",").map(x => x.trim()).filter(Boolean); }));
-        row.append(field("Options", o, "comma-separated"));
+        row.append(field("Options", o, hrs ? "comma-separated; 12h, 7d, 30d or hours" : "comma-separated"));
       }
       box.append(row);
     }
@@ -809,6 +824,8 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
         if (!p) continue;
         const v = c.param.startsWith("value.") ? (b[c.param.slice(6, -6)] || {}).hours : c.value;
         if (v === undefined || v === null || String(v) === String(p.get())) continue;
+        const was = (st.sent.ctl || {})[c.param];
+        if (was !== undefined && String(was) !== String(p.get())) continue;   // changed in the editor since: the editor wins
         p.set(v); changed = true;
       }
       if (changed) { st.edited = true; recompile(); st.sent.rev = st.rev + 1; await save(true); renderAll(); }

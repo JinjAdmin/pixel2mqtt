@@ -196,9 +196,10 @@ under **Control from Home Assistant**: element settings (font, alignment, colour
 shading, ...) are in the element's panel, and screen settings (time on screen, order, background, stale after, and
 each sparkline's history window) are in **Screen**. Each control has a name (default "<screen> <setting>", e.g.
 *Market chart history*) and a type: a number (min, max, step, unit), a dropdown (options, comma-separated), a switch
-or text. After **Send to display**, a change in Home Assistant is checked against that range or list, saved, and on
-the display within a second or two (a history window resends the sparkline). Opening the screen in the editor picks
-up what Home Assistant changed. Unticking a control, or deleting the screen, removes its entity. A group's member
+or text. A history window is a dropdown by default (1h, 6h, 24h, 3d, 7d, 30d; options like `12h` or `7d` are converted to
+hours), and a sparkline's panel links to it. After **Send to display**, a change in Home Assistant is checked against that range or list, saved, and on
+the display within a second or two (a history window resends the sparkline). Opening or sending the screen in the editor
+picks up what Home Assistant changed, so a Send doesn't undo it. Unticking a control, or deleting the screen, removes its entity. A group's member
 dropdown and rotate time are built-in controls of the same kind.
 
 MQTT: discovery under `<prefix>/<number|select|switch|text>/<display>/scr_<screen>_<setting>/config`, commands on

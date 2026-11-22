@@ -243,6 +243,11 @@ class Bindings:
                 self.data = json.loads(self.path.read_text(encoding="utf-8"))
             except ValueError:
                 log.warning("bindings.json is unreadable; starting empty")
+        for d in self.data.get("displays", {}).values():   # older versions could store a history window as text
+            for b in d.get("screens", {}).values():
+                for spec in b.values():
+                    if "hours" in spec:
+                        spec["hours"] = ctl.parse_hours(spec["hours"]) or 24
         self.sent = {}       # display id -> {name: last value sent}
         self.pending = {}    # display id -> {name: value} waiting to go out
         self.hist = {}       # (entity, attr, hours, points) -> (fetched_at, list)
@@ -481,7 +486,7 @@ class Bindings:
                 spec = self.screens(dev_id).get(screen, {}).get(param[6:-6])
                 if not spec or not self._is_history(spec):
                     return False
-                spec["hours"] = v
+                spec["hours"] = v   # a number (coerce converts '7d' etc.)
             else:
                 c["value"] = v
                 entry["scr"] = ctl.patch_scr(entry["scr"], c, v)
@@ -532,7 +537,8 @@ class Bindings:
                 if c.get("unit"):
                     cfg["unit_of_meas"] = c["unit"]
             elif c["type"] == "select":
-                cfg["ops"] = c["options"]
+                cur = ctl.state_text(c, self.control_value(did, screen, c))
+                cfg["ops"] = c["options"] + ([cur] if cur and cur not in c["options"] else [])
             elif c["type"] == "text":
                 cfg["max"] = 63
             out.append((f"{self.mgr.disc_prefix}/{c['type']}/{d.uid}/scr_{slug(screen)}_{ps}/config", cfg,
