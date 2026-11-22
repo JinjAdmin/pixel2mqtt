@@ -364,7 +364,7 @@ button.icon { padding: 0 8px; min-width: 30px; height: 30px; background: transpa
 .panehead { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
 .panehead h3 { margin: 0; }
 .info { color: var(--muted); cursor: help; font-size: 12px; }
-.ha-tog { margin-left: auto; height: 20px !important; width: 22px; padding: 0; border: 0; background: transparent; color: var(--muted); opacity: .35; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.ha-tog { margin-left: 2px; height: 20px !important; width: 22px; padding: 0; border: 0; background: transparent; color: var(--muted); opacity: .35; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 .ha-tog:hover { opacity: .8; }
 .ha-tog.on { color: var(--accent); opacity: 1; }
 .xp { position: relative; }

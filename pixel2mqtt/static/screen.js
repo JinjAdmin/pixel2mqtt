@@ -624,7 +624,8 @@ const Screens = (() => {
         op.addEventListener("change", () => { edit(() => { r.op = op.value; }); render(); });
         const lit = txt(r, "lit", { placeholder: r.op === "in" ? "a,b,c" : "value" });
         if (["has", "fresh", "set"].includes(r.op)) lit.classList.add("hidden");
-        return el("div", {}, head, el("div", { cls: "condrow" }, el("div", { cls: "cl1" }, not, valueField(r, "name", "text", true), op), el("div", { cls: "cl2" }, lit, del)));
+        const noLit = ["has", "fresh", "set"].includes(r.op);
+        return el("div", {}, head, el("div", { cls: "condrow" }, el("div", { cls: "cl1" }, not, valueField(r, "name", "text", true), op, noLit ? del : ""), noLit ? "" : el("div", { cls: "cl2" }, lit, del)));
       }), el("button", { cls: "small", onclick: () => { edit(() => rows.push({ join: "&&", name: "", op: "==", lit: "" })); render(); } }, rows.length ? "+ AND / OR" : `+ ${label}`));
     };
     render(); return wrap;
@@ -695,8 +696,9 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
       kids.push(X("font", field("Font", fontPicker(e))),
         field("Text", templateEditor(e)),
         el("div", { cls: "g2" }, X("align", field("Align", choice(e, "align", ["left", "center", "right"], ["⇤", "↔", "⇥"]))), X("valign", field("Vertical", choice(e, "valign", ["top", "middle", "bottom"], ["⤒", "↕", "⤓"])))),
-        X("overflow", field("Overflow", choice(e, "overflow", ["clip", "scroll", "shrink"], ["Clip", "Scroll", "Shrink"]))),
-        el("div", { cls: "g2" }, e.overflow === "scroll" ? X("speed", field("Scroll speed", unitIn(num(e, "speed"), "px/s"))) : el("span"), X("spacing", field("Spacing", unitIn(num(e, "spacing"), "px")))));
+        el("div", { cls: "g3" }, Object.assign(X("overflow", field("Overflow", choice(e, "overflow", ["clip", "scroll", "shrink"], ["Clip", "Scroll", "Shrink"]))), { style: "grid-column: span 2" }),
+          X("spacing", field("Spacing", unitIn(num(e, "spacing"), "px")))),
+        e.overflow === "scroll" ? el("div", { cls: "g2" }, X("speed", field("Scroll speed", unitIn(num(e, "speed"), "px/s"))), el("p", { cls: "hint" }, "Scrolls when the text is wider than W.")) : "");
       if (e.w === null && (e.align !== "left" || e.overflow !== "clip")) kids.push(el("p", { cls: "hint" }, "Set W (and H): alignment and overflow act within the box."));
     }
     if (e.type === "icon") {
@@ -722,7 +724,18 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
     if (e.type === "spark") {
       kids.push(field(el("span", {}, "Series ", info("A list value, e.g. a History binding.")), valueField(e, "series", "spark")), X("area", check(e, "area", "Shade under the line")), X("dot", check(e, "dot", "Blink the newest point")));
       const hp = screenParams().find(p => p.param === `value.${e.series}.hours`);
-      if (hp) kids.push(xp(hp, field("History window", el("div", { cls: "muted small" }, `last ${hp.get()} h (set in Sources)`))));
+      if (hp) {
+        const PRE = [[1, "1h"], [6, "6h"], [24, "24h"], [72, "3d"], [168, "7d"], [720, "30d"]], h = +hp.get();
+        const w = el("select", {}, ...PRE.map(([v, l]) => el("option", { value: v }, l)), el("option", { value: "custom" }, PRE.some(([v]) => v === h) ? "Custom…" : `Custom (${h} h)…`));
+        w.value = PRE.some(([v]) => v === h) ? String(h) : "custom";
+        w.addEventListener("change", async () => {
+          let v = w.value;
+          if (v === "custom") { const t = await askText("History window in hours (1 to 8784)", String(h), { ok: "Set" }); v = t && +t > 0 && +t <= 8784 ? +t : null; }
+          if (v) edit(() => hp.set(+v));
+          renderInspector();
+        });
+        kids.push(xp(hp, field("History window", w)));
+      }
     }
     if (e.type === "rect") kids.push(X("fill", check(e, "fill", "Filled")));
     kids.push(X("color", field(e.type === "bar" ? "Colour (when no fill is set)" : "Colour", colorRules(e))));
@@ -905,13 +918,14 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
       : el("p", { cls: "hint" }, "No members match (yet).");
     box.append(el("div", { cls: "g2" }, field("Members by", by), field(BY.find(x => x[0] === g.by)[1], match)), dl, list,
       el("div", { cls: "g2" }, field("Dropdown name", txt(g, "name", { placeholder: `${st.name} member` })), field("Rotate every", unitIn(num(g, "rotate"), "s"))));
+    const [gn, gr] = box.lastChild.children; gn.dataset.param = "group.name"; gr.dataset.param = "group.rotate"; gn.classList.add("xp"); gr.classList.add("xp");
     return box;
   }
   function exposedList() {   // every entity this screen creates in Home Assistant
     const g = doc().settings.group, list = doc().controls || [], params = new Map(allParams().map(p => [p.param, p])), rows = [];
     if (g) {
-      rows.push(el("div", { cls: "exprow" }, el("span", { cls: "exptype" }, "select"), txt(g, "name", { placeholder: `${st.name} member` }), el("button", { cls: "icon", title: "Go to the group", onclick: () => { secOpen.Group = true; renderScreenPane(); } }, "↗")));
-      rows.push(el("div", { cls: "exprow" }, el("span", { cls: "exptype" }, "number"), el("span", { cls: "small" }, `${g.name || st.name + " member"} rotate seconds`)));
+      rows.push(el("div", { cls: "exprow" }, el("span", { cls: "exptype" }, "select"), txt(g, "name", { placeholder: `${st.name} member` }), el("button", { cls: "icon", title: "Go to the group", onclick: () => goTo("group.name") }, "↗")));
+      rows.push(el("div", { cls: "exprow" }, el("span", { cls: "exptype" }, "number"), el("span", { cls: "small" }, `${g.name || st.name + " member"} rotate seconds`), el("button", { cls: "icon", title: "Go to the rotate time", onclick: () => goTo("group.rotate") }, "↗")));
     }
     for (const c of list) {
       if (!params.has(c.param)) continue;
@@ -924,7 +938,7 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
   function goTo(param) {
     if (param.startsWith("el.")) { selId = param.split(".")[1]; setTab("el"); renderAll(); }
     else if (param.startsWith("value.")) { const sp = doc().elements.find(e => e.type === "spark" && e.series === param.slice(6, -6)); if (sp) { selId = sp.id; setTab("el"); renderAll(); } }
-    else setTab("screen");
+    else { if (param.startsWith("group.")) secOpen.Group = true; setTab("screen"); }
     const f = root.querySelector(`[data-param="${CSS.escape(param)}"]`);
     if (f) { f.scrollIntoView({ block: "center" }); f.classList.add("flash"); setTimeout(() => f.classList.remove("flash"), 1200); }
   }
