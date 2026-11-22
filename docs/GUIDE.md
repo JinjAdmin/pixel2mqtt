@@ -70,6 +70,9 @@ and shapes. pixel2mqtt sends new values whenever they change. Screens need pixel
 
 ### The screen editor at a glance
 
+Everything about a screen is edited on one page: what's on it (left), how it looks (middle) and the settings of
+whatever you've selected (right).
+
 ![The screen editor with the 3D printer example; numbered callouts](img/guide-editor.png)
 
 1. **Add**: click an element type to add it, or drag it onto the canvas.
@@ -84,6 +87,9 @@ and shapes. pixel2mqtt sends new values whenever they change. Screens need pixel
 8. **Status**: Draft, Changed since sent or On display.
 
 ### Elements
+
+Elements are the building blocks of a screen: each piece of text, icon, bar, sparkline or shape is one element,
+placed at a position on the 52×32 panel.
 
 ![The Add palette and the Elements list](img/guide-elements.png)
 
@@ -101,6 +107,9 @@ Every element has X, Y (and W, H), a **Colour**, **Show when** and **Blink**.
 
 ### Text and values
 
+Text elements can show fixed words, live values, or a mix of both. Formatters tidy a value up for the small panel:
+rounding, units, durations, upper case and so on.
+
 ![Font picker and a text template with formatter chips](img/guide-text.png)
 
 - **Font**: Tiny 3×5, Small 5×7, Big 10×14, Huge 15×21, each drawn at the panel's scale. No sizes in between.
@@ -111,10 +120,12 @@ Every element has X, Y (and W, H), a **Colour**, **Show when** and **Blink**.
 
 ### Sources (binds)
 
+A **bind** is how a screen gets live data. It connects a Home Assistant entity to a short value name the screen
+uses, such as `printer.progress`; whenever the entity changes, pixel2mqtt sends the new value to the display.
+
 ![The Sources tab: the 3D printer's values bound to states and an attribute](img/sources.png)
 
-A bind connects a Home Assistant entity to a value name the screen uses (`printer.progress`). Every name the
-screen uses is listed:
+Every value name the screen uses is listed:
 
 1. **Bind** to pick the entity (search names, ids, devices, areas and integrations, or browse Area → Device →
    Entity → Attribute), or **= Fixed** for a constant.
@@ -138,6 +149,9 @@ screen uses is listed:
 
 ### Showing and hiding
 
+Conditions let a screen react to its data: show an element only in some situations ("PAUSED" only while paused),
+change a colour (green when up, red when down), or skip the whole screen when it has nothing to show.
+
 ![A colour rule and a show-when condition on the percentage](img/guide-conditions.png)
 
 Each condition row is `[NOT] [value 🔍] [operator]` over `[compare value] [×]`. **+ AND / OR** adds a row.
@@ -156,9 +170,10 @@ Operators without a compare value (*is set*, *has a value*, *is fresh*) take one
 
 ### Template screens (groups)
 
-![Screen ▸ Group: a Ticker template over four members](img/guide-group.png)
+A template screen is one design reused for several similar things, e.g. one ticker layout for every stock you
+follow. Home Assistant gets a dropdown to pick which one is shown, or it can rotate through them.
 
-One screen shows any of several similar entities, e.g. every stock ticker.
+![Screen ▸ Group: a Ticker template over four members](img/guide-group.png)
 
 1. **Screen ▸ Group**: tick **Template screen** and pick the members by **integration**, **label**,
    **device**, **entity type** or a list of **entities**. They show as chips.
@@ -168,6 +183,11 @@ One screen shows any of several similar entities, e.g. every stock ticker.
    number for **Rotate every**. New members appear in the dropdown by themselves.
 
 ### Exposed settings (controls)
+
+An exposed setting lets Home Assistant change part of a screen's design without opening the editor: the colour of
+a text, how long the screen stays up, or a chart's time window. Each one becomes an entity (number, dropdown, switch
+or text) on the display's device page, so you can put it on a dashboard or change it from an automation, e.g. a
+longer chart window at night.
 
 ![The Expose popover for Time on screen](img/guide-expose.png)
 
@@ -190,6 +210,9 @@ One screen shows any of several similar entities, e.g. every stock ticker.
 
 ### Sending and the rotation
 
+Nothing reaches the display until you send it. Once sent, a screen joins the display's Info rotation and keeps
+updating on its own; pixel2mqtt doesn't need the editor open.
+
 - **Send to display** uploads the screen and starts its binds (values batched about once a second, resent every
   10 minutes and when the display restarts). **Remove from display** takes it off.
 - **Screen ▸ On the display as** is the name in Home Assistant's *Screen* select and in playlists. **Rename**
@@ -199,6 +222,9 @@ One screen shows any of several similar entities, e.g. every stock ticker.
 - How screens take turns: see [Playlists and the Info rotation](#playlists-and-the-info-rotation).
 
 ## Animations and icons
+
+Animations are full-panel moving pictures, built from layers that can each move, tile and have their own frames.
+Icons are small images (still or animated) used on screens and in notifications.
 
 ![The animation editor with the Ringworld project](guide/editor.png)
 
@@ -218,6 +244,8 @@ and motion settings, ready to remix. Sent unchanged, it reproduces the stock ani
 pixel2mqtt contains no artwork: it reads the files from your own display and writes the results back to it.
 
 ### Tools
+
+The drawing tools on the left work on the selected layer and frame.
 
 Hover a tool for its settings (on touch screens, tap it again). Each tool keeps its own settings.
 
@@ -295,6 +323,9 @@ With a display adopted:
 - **+ From display** grabs the panel's current frame as a layer.
 
 ## Playlists and the Info rotation
+
+The display can run one thing (a clock, an animation, the screen rotation) or a **playlist** that switches between
+several on a timer.
 
 - In **Info** mode the display cycles through every screen whose *Needs*, *Show only when* and *Keep showing after*
   allow it, in **order**, each for its **time on screen** (default: the display's *Info rotate* setting).
