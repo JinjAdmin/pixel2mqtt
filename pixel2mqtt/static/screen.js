@@ -630,11 +630,11 @@ const Screens = (() => {
     };
     render(); return wrap;
   }
-  function colorRules(e) {
+  function colorRules(e, opts = {}) {
     const c = e.color || (e.color = { base: "#ffffff", rules: [] });
     const wrap = el("div", { cls: "conds" });
     const render = () => wrap.replaceChildren(
-      el("div", { cls: "row" }, colorInput(c, "base"), el("span", { cls: "muted small" }, c.rules.length ? "otherwise (rules below win)" : "")),
+      opts.noBase ? "" : el("div", { cls: "row" }, colorInput(c, "base"), el("span", { cls: "muted small" }, c.rules.length ? "otherwise (rules below win)" : "")),
       ...c.rules.map((r, i) => {
         const op = el("select", {}, ...OPS.filter(o => o !== "fresh").map(o => el("option", { value: o }, OP_LABEL[o] || o))); op.value = r.op || "==";
         op.addEventListener("change", () => edit(() => { r.op = op.value; }));
@@ -696,8 +696,7 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
       kids.push(X("font", field("Font", fontPicker(e))),
         field("Text", templateEditor(e)),
         el("div", { cls: "g2" }, X("align", field("Align", choice(e, "align", ["left", "center", "right"], ["⇤", "↔", "⇥"]))), X("valign", field("Vertical", choice(e, "valign", ["top", "middle", "bottom"], ["⤒", "↕", "⤓"])))),
-        el("div", { cls: "g3" }, Object.assign(X("overflow", field("Overflow", choice(e, "overflow", ["clip", "scroll", "shrink"], ["Clip", "Scroll", "Shrink"]))), { style: "grid-column: span 2" }),
-          X("spacing", field("Spacing", unitIn(num(e, "spacing"), "px")))),
+        X("overflow", field("Overflow", choice(e, "overflow", ["clip", "scroll", "shrink"], ["Clip", "Scroll", "Shrink"]))),
         e.overflow === "scroll" ? el("div", { cls: "g2" }, X("speed", field("Scroll speed", unitIn(num(e, "speed"), "px/s"))), el("p", { cls: "hint" }, "Scrolls when the text is wider than W.")) : "");
       if (e.w === null && (e.align !== "left" || e.overflow !== "clip")) kids.push(el("p", { cls: "hint" }, "Set W (and H): alignment and overflow act within the box."));
     }
@@ -738,7 +737,11 @@ text 0 0 font=${f} "${f === "tiny" ? "AG42" : sample}"
       }
     }
     if (e.type === "rect") kids.push(X("fill", check(e, "fill", "Filled")));
-    kids.push(X("color", field(e.type === "bar" ? "Colour (when no fill is set)" : "Colour", colorRules(e))));
+    if (e.type === "text") {   // colour and spacing share a row; the colour rules follow full width
+      const c = e.color || (e.color = { base: "#ffffff", rules: [] });
+      kids.push(el("div", { cls: "g3" }, Object.assign(X("color", field("Colour", colorInput(c, "base"))), { style: "grid-column: span 2" }),
+        X("spacing", field("Spacing", unitIn(num(e, "spacing"), "px")))), colorRules(e, { noBase: true }));
+    } else kids.push(X("color", field(e.type === "bar" ? "Colour (when no fill is set)" : "Colour", colorRules(e))));
     kids.push(field("Show when", condBuilder(e.show || (e.show = []), "Show only when…")));
     const bl = el("input", { type: "checkbox" }); bl.checked = +e.blink > 0;
     bl.addEventListener("change", () => { edit(() => { e.blink = bl.checked ? 500 : 0; }); renderInspector(); });
