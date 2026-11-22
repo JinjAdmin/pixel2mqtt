@@ -4,9 +4,10 @@ How to make info screens, animations and icons for the 52×32 display, and how t
 To install pixel2mqtt, see the [README](../README.md). Inside pixel2mqtt, the **?** button at the top right opens
 this guide in a side drawer.
 
-**Contents:** [Getting started](#getting-started) · [Your first screen](#your-first-screen) ·
-[Binding data](#binding-data-the-sources-tab) · [Template screens](#template-screens-groups) ·
-[Exposing settings](#exposing-settings-to-home-assistant) · [Animations and icons](#animations-and-icons) ·
+**Contents:** [Getting started](#getting-started) · [Screens](#screens) ([editor](#the-screen-editor-at-a-glance),
+[elements](#elements), [text](#text-and-values), [sources](#sources-binds), [showing and hiding](#showing-and-hiding),
+[templates](#template-screens-groups), [exposed settings](#exposed-settings-controls),
+[sending](#sending-and-the-rotation)) · [Animations and icons](#animations-and-icons) ·
 [Playlists](#playlists-and-the-info-rotation) · [Reference](#reference)
 
 ## Getting started
@@ -39,52 +40,66 @@ Click the project's name to rename it. The **⋮** menu has duplicate, export (`
 branch (finished but not yet released) and `:beta` is the most recently pushed feature branch (experimental). The
 add-on follows releases.
 
-## Your first screen
+## Screens
 
-![The screen editor with the 3D printer example, mid-print](img/screen-editor.png)
+A **screen** is an info screen in the display's Info rotation: text, Home Assistant values, icons, bars, sparklines
+and shapes. pixel2mqtt sends new values whenever they change. Screens need pixeld-h6631 with screen support.
 
-A **screen** is an info screen in the display's Info rotation: text, values from Home Assistant, icons, progress
-bars, sparklines and shapes. pixel2mqtt sends the values whenever they change, so the display stays current.
-Screens need pixeld-h6631 with screen support.
+> **Binds vs exposed settings.** A **bind** (the Sources tab) brings data *from* Home Assistant *into* the screen,
+> e.g. `sensor.printer_progress` → `printer.progress`. An **exposed setting** works the other way: it turns a
+> screen setting (a colour, the time on screen) into an entity that Home Assistant can *change*.
 
-1. **Add elements** from the left: **Text**, **Value** (text that opens the entity picker straight away), **Icon**,
-   **Icon by value** (an icon per state, e.g. the weather), **Progress bar**, **Sparkline**, **Rectangle** or
-   **Line**. Click to add, or drag onto the canvas.
-2. **Place them.** Click to select, drag to move (snaps to the centre lines and other elements; Alt places freely),
-   drag the white handles to resize. **Elements** on the left is the drawing order (top = drawn last): drag to
-   reorder, 👁 hides while editing, 🔒 locks, ⚠ marks a problem (hover for details).
-3. **Style them** in the **Element** tab. Duplicate and delete are the icons in its header.
-   - **Font**: Tiny 3×5, Small 5×7, Big 10×14 and Huge 15×21, each sample drawn as LEDs at the panel's scale, so
-     what you pick is what the panel shows. There are no sizes in between.
-   - **Text** is a template: `{printer.progress|int}%`. **+ Insert value** picks a value and the chips add
-     formatters (Integer, Decimals, Thousands, %, Duration, Temperature, Time, Ago, Upper, Fallback). The result
-     shows underneath.
-   - **Align**, **Vertical**, **Overflow** (clip, scroll or shrink when the text is wider than W) and **Spacing**.
-   - **Colour** and **colour rules**: each rule is `[NOT] [value] [operator]` over `[compare] [colour]`, and the
-     first rule that's true wins (e.g. green when `ticker.change > 0`).
-   - **Show when**: show the element only while a condition holds. Operators without a compare value (*is set*,
-     *has a value*, *is fresh*) take one line.
-   - **Blink**: a toggle that reveals the on/off time in ms.
-4. **Set up the screen** in the **Screen** tab:
-   - **On the display as**: the name in Home Assistant's *Screen* select and in playlists. **Rename** changes it
-     (the project name above the canvas is separate).
-   - **Basics**: time on screen, order in the rotation, background.
-   - **When to show**: **Needs** (values that must exist and be fresh), **Stale after**, **Show only when** and
-     **Keep showing after** (e.g. 30 minutes after a print finishes).
-   - **Group** and **Exposed to HA**: see below. The **.scr** tab shows the file that gets sent.
-5. **Send to display.** The screen is uploaded and its bound values start flowing (batched about once a second,
-   resent every 10 minutes and whenever the display restarts). **Remove from display** takes it off.
+### The screen editor at a glance
 
-**Sample / Live** above the canvas switches the preview between sample values and Home Assistant's live values.
+![The screen editor with the 3D printer example; numbered callouts](img/guide-editor.png)
 
-## Binding data: the Sources tab
+1. **Add**: click an element type to add it, or drag it onto the canvas.
+2. **Elements**: the drawing order (top = drawn last). Drag to reorder; 👁 hides, 🔒 locks, ⚠ marks a problem.
+3. **Canvas**: click to select, drag to move (snaps to centre lines and other elements; Alt places freely), drag
+   the white handles to resize. Arrows nudge 1 px, Shift + arrows 5 px.
+4. **Sample / Live**: preview with sample values or Home Assistant's live values.
+5. **Tabs**: **Element** (the selected element), **Sources** (binds), **Screen** (the whole screen), **.scr**
+   (the file that gets sent).
+6. **Settings** for the selected element. Duplicate and delete are in its header.
+7. **Send to display**: uploads the screen. A red dot means there are unsent changes.
+8. **Status**: Draft, Changed since sent or On display.
+
+### Elements
+
+![The Add palette and the Elements list](img/guide-elements.png)
+
+| Element | Shows |
+|---|---|
+| Text | a template with values, e.g. `{printer.progress}%` |
+| Value | text that opens the entity picker straight away |
+| Icon | an icon from the display's library, or a built-in `@` icon |
+| Icon by value | one icon per state, e.g. the weather (`*` = anything else) |
+| Progress bar | a value between Min and Max; optional end colour, empty colour, direction, blinking edge |
+| Sparkline | a list value, usually a History bind; optional shading and blinking newest point |
+| Rectangle, Line | shapes; a rectangle can be filled |
+
+Every element has X, Y (and W, H), a **Colour**, **Show when** and **Blink**.
+
+### Text and values
+
+![Font picker and a text template with formatter chips](img/guide-text.png)
+
+- **Font**: Tiny 3×5, Small 5×7, Big 10×14, Huge 15×21, each drawn at the panel's scale. No sizes in between.
+- **Text** is a template: a value goes in braces, formatters after `|`, e.g. `{printer.name|upper|or:3D PRINT}`.
+- **+ Insert value** picks a value; the chips add formatters: Integer, Decimals, Thousands, %, Duration,
+  Temperature, Time, Ago, Upper, Fallback. The result shows under the chips.
+- **Align**, **Vertical** and **Overflow** (clip, scroll or shrink) act within the box, so set W (and H) first.
+
+### Sources (binds)
 
 ![The Sources tab: the 3D printer's values bound to states and an attribute](img/sources.png)
 
-**Sources** binds Home Assistant entities to the named values a screen uses. A name like `market.price` can appear
-in text, colours and conditions, and updates when the entity changes. Every name the screen uses is listed:
-**Bind** connects it, **= Fixed** gives it a constant, and the box beside it holds a **sample** for the preview
-(try a state like `finish` without waiting for a real print).
+A bind connects a Home Assistant entity to a value name the screen uses (`printer.progress`). Every name the
+screen uses is listed:
+
+1. **Bind** to pick the entity (search names, ids, devices, areas and integrations, or browse Area → Device →
+   Entity → Attribute), or **= Fixed** for a constant.
+2. Type a **sample** in the box beside it to preview a state without waiting for it (e.g. `finish`).
 
 | Kind | Value | Example |
 |---|---|---|
@@ -92,56 +107,77 @@ in text, colours and conditions, and updates when the entity changes. Every name
 | Attribute | one attribute | `weather.home` → `humidity` |
 | History | the last N hours as a list, for a sparkline | 24 h, 48 points |
 | Fixed | a constant | `BTC` |
-| Group | from the group's current member (see below) | the member's `symbol` as *Short symbol* |
+| Group | from a template screen's current member | the member's `symbol` as *Short symbol* |
 | Forecast | a weather entity's forecast | *Tomorrow* → *High* |
 
-- The **entity picker** searches names, ids, devices, areas and integrations (words in any order), or browses
-  Area → Device → Entity → Attribute.
-- **History** cuts out stretches where nothing changed for over an hour (a closed market, a weekend), so a stock
-  shows its trading sessions back to back. Windows over 10 days come from Home Assistant's long-term statistics.
-  A sparkline's **History window** (1h to 30d, or Custom…) can also be set in its Element panel.
-- **Forecast** periods: now (this hour), today, tonight and up to three days ahead. Fields: temperature (high by
-  day, low at night), high, low, condition and day name.
+- **History** skips stretches with no change for over an hour (a closed market), so trading sessions sit back to
+  back. Windows over 10 days use Home Assistant's long-term statistics.
+- **Forecast** periods: now, today, tonight and up to three days ahead; fields: temperature, high, low,
+  condition, day name.
+- Home Assistant access is automatic in the add-on. In Docker, set `HA_URL` and `HA_TOKEN_FILE` (see the README).
+  Without it, publish values yourself to `<topic>/values/set`; Sources shows an example automation.
 
-Home Assistant access is automatic in the add-on. In Docker, set `HA_URL` and `HA_TOKEN_FILE` (see the README).
-Without it, values are plain names: publish them yourself to `<topic>/values/set`, and Sources shows an example
-automation.
+### Showing and hiding
 
-## Template screens (groups)
+![A colour rule and a show-when condition on the percentage](img/guide-conditions.png)
 
-One screen can show any of several similar entities, such as every stock ticker.
+Each condition row is `[NOT] [value 🔍] [operator]` over `[compare value] [×]`. **+ AND / OR** adds a row.
+Operators without a compare value (*is set*, *has a value*, *is fresh*) take one line.
 
-1. In **Screen ▸ Group**, tick **Template screen** and choose the members: every entity of an **integration**
-   (e.g. `easy_stock`), a **label**, a **device**, an **entity type** or a list of **entities**. The members show
-   as chips.
-2. In **Sources**, bind each value with **◫ Group**: the member's state, an attribute or its history, with a
-   display form such as *Short symbol* (`^GSPC` → `S&P`, `BTC-USD` → `BTC`), *Price prefix* or *Is crypto*. The
-   member picker at the top previews any member.
-3. **Send to display.** Home Assistant gets a dropdown (the *Dropdown name*) with every member plus **Rotate**, and
-   a number for the rotate time. Rotate steps through the members every N seconds; a member's values change
-   together, and new members appear in the dropdown by themselves.
+| Where | Setting | Does |
+|---|---|---|
+| Element | **Colour** + **colour rules** | the first true rule picks the colour, e.g. yellow while `printer.status == pause` |
+| Element | **Show when** | draws the element only while the condition holds |
+| Screen ▸ When to show | **Needs** | hides the screen until these values exist and are fresh |
+| Screen ▸ When to show | **Stale after** | a needed value older than this hides the screen (default 6h) |
+| Screen ▸ When to show | **Show only when** | the screen joins the rotation only while this holds |
+| Screen ▸ When to show | **Keep showing after** + **for** | keeps it a while longer, e.g. 30m after a print finishes |
 
-## Exposing settings to Home Assistant
+![Screen ▸ When to show for the 3D printer](img/guide-when.png)
 
-Any screen setting can become an entity on the display's device in Home Assistant, to change from a dashboard or an
-automation.
+### Template screens (groups)
 
-- Click the **⌂** next to a field's label (*Expose to Home Assistant*). It lights up, the field gets an accent
-  edge, and a popover sets the entity's **Name** (default "<screen> <setting>") and **Type**: a number (Lowest /
-  Highest / Step, with a unit), a dropdown (options, comma-separated), a switch or text. Click the ⌂ again to edit
-  it or **Stop exposing**.
+![Screen ▸ Group: a Ticker template over four members](img/guide-group.png)
+
+One screen shows any of several similar entities, e.g. every stock ticker.
+
+1. **Screen ▸ Group**: tick **Template screen** and pick the members by **integration**, **label**,
+   **device**, **entity type** or a list of **entities**. They show as chips.
+2. **Sources**: bind values with **◫ Group** (the member's state, an attribute or its history), optionally in a
+   display form like *Short symbol* (`BTC-USD` → `BTC`). The member picker at the top previews any member.
+3. **Send to display.** Home Assistant gets a dropdown (*Dropdown name*) with every member plus **Rotate**, and a
+   number for **Rotate every**. New members appear in the dropdown by themselves.
+
+### Exposed settings (controls)
+
+![The Expose popover for Time on screen](img/guide-expose.png)
+
+1. Click **⌂** next to a field's label. The field gets an accent edge and a popover opens.
+2. Set the entity's **Name** and **Type**: number (Lowest / Highest / Step, unit), select (comma-separated
+   options), switch or text. **Done**.
+3. **Send to display.** The entity appears on the display's device in Home Assistant.
+
+![Screen ▸ Exposed to HA: every entity the Ticker creates](img/guide-exposed.png)
+
+- **Screen ▸ Exposed to HA** lists every entity the screen creates, including a group's dropdown and rotate
+  number. Names are editable; ↗ jumps to the field.
 - Exposable: font, alignment, overflow, scroll speed, spacing, colour, blink; a bar's range, fill, direction and
-  pulse; a sparkline's shading, dot and **history window**; a rectangle's fill; the screen's time on screen,
-  order, background and stale after.
-- A **history window** is a dropdown of `1h, 6h, 24h, 3d, 7d, 30d` by default. Options like `12h` or `7d` are
-  converted to hours.
-- **Screen ▸ Exposed to HA** lists every entity the screen creates (including a group's dropdown and rotate
-  seconds), with editable names and ↗ links to their fields.
+  pulse; a sparkline's shading, dot and **history window** (a dropdown of `1h, 6h, 24h, 3d, 7d, 30d`); a
+  rectangle's fill; the screen's time on screen, order, background and stale after.
+- A change in Home Assistant is checked against the range or options and on the display within a second or two.
+  Opening or sending the screen picks it up, so a Send doesn't undo it.
+- **Stop exposing** (in the popover) or removing the screen removes the entity. Renaming a screen creates new
+  entities.
 
-After **Send to display**, a change in Home Assistant is checked against the range or options, saved, and on the
-display within a second or two (a history window resends the sparkline). Opening or sending the screen in the
-editor picks up what Home Assistant changed, so a Send doesn't undo it. Stopping exposure, or removing the screen,
-removes the entity. Renaming a screen creates new entities.
+### Sending and the rotation
+
+- **Send to display** uploads the screen and starts its binds (values batched about once a second, resent every
+  10 minutes and when the display restarts). **Remove from display** takes it off.
+- **Screen ▸ On the display as** is the name in Home Assistant's *Screen* select and in playlists. **Rename**
+  changes it; the project name is separate.
+- **Screen ▸ Basics**: **Time on screen** (blank = the display's *Info rotate*), **Order** in the rotation
+  (lower first) and **Background**.
+- How screens take turns: see [Playlists and the Info rotation](#playlists-and-the-info-rotation).
 
 ## Animations and icons
 
