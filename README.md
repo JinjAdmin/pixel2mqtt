@@ -12,8 +12,12 @@ broker and Home Assistant for any number of displays. You get:
   - **remove duplicates**: identical animations collapse to one, keeping a real name over an `App …` copy;
   - a **layered animation editor** (see below);
   - draw new icons, including animated ones, and add them to the icon library;
-  - design **info screens**: text, values from Home Assistant, icons, progress bars and sparklines, laid out on the
-    panel and kept up to date by pixel2mqtt (needs pixeld-h6631 with screen support);
+  - design **info screens**: text, values from Home Assistant (state, attributes, history sparklines, weather
+    forecasts), icons, progress bars and shapes, laid out on the panel and kept up to date by pixel2mqtt (needs
+    pixeld-h6631 with screen support);
+  - **template screens**: one layout for a group of similar entities (every stock ticker), picked in Home Assistant
+    or rotating;
+  - **expose any screen setting** (font, colour, a chart's time window, …) as a Home Assistant entity;
   - see each display's free storage;
   - with **Live on display**, the real panel shows the canvas at about 30 fps while you edit.
 - **Built-in artwork import.** One button converts the animations and icons that ship inside the display's own
@@ -25,10 +29,21 @@ broker and Home Assistant for any number of displays. You get:
   Copies of built-ins are skipped. (Needs pixeld-h6631 v0.2.0 or newer.)
   *pixel2mqtt contains no artwork.* It reads the files from your own display and writes the results back to it.
 
-**New to the editor?** See the [editor guide](docs/GUIDE.md) for projects, tools, layers, frames, icons and screens.
+**New to pixel2mqtt?** The [guide](docs/GUIDE.md) walks through a first screen, binding Home Assistant data, template
+screens, exposing settings, animations, icons and playlists.
 
 ### Screenshots
-**Editor**: layers, frames, motion and opacity, with the colour palette and scene controls on the right.
+**Screen editor**: the Ticker example with sample values. Elements on the left, the 52×32 preview in the middle,
+the selected sparkline's settings on the right (its history window is exposed to Home Assistant).
+
+<img src="docs/img/screen-editor.png" alt="Screen editor: a stock ticker screen with a coin badge, price, change and sparkline" width="900">
+
+**Sources**: each value the screen uses, bound to Home Assistant (here, to the current member of a group of tickers),
+with a sample for the preview.
+
+<img src="docs/img/sources.png" alt="Sources tab: values bound to a group's attributes, each with a sample" width="340">
+
+**Animation editor**: layers, frames, motion and opacity, with the colour palette and scene controls on the right.
 
 <img src="docs/screenshots/editor.png" alt="pixel2mqtt editor with a pixel-art smiley on the 52x32 canvas" width="900">
 
@@ -127,7 +142,8 @@ services:
 ```
 
 `latest` is the newest release. To stay on one version, use `:0.4` (gets 0.4.x fixes) or an exact version
-such as `:0.4.2`. `:edge` follows the main branch: the newest changes, not yet released.
+such as `:0.4.3`. `:edge` follows the main branch (finished changes, not yet released) and `:beta` the most
+recently pushed feature branch (experimental, may break).
 
 Open `http://<server>:8466/`, go to **Displays**, click **Scan the network**, then **Adopt**.
 
@@ -170,6 +186,9 @@ The topics are pixeld's own, with the base replaced by the display's topic. Some
 | `<topic>/chime/set` | a sound name, optionally with a volume |
 | `<topic>/values/set` | JSON `{"name": value, ...}` for info screens (pixel2mqtt sends bound values itself) |
 | `<topic>/screen/set` | `Auto`, or an info screen's name to pin it |
+| `<topic>/playlist/set` | `kind[:arg]:secs,…`, e.g. `clock:30,info:40,screen:Ticker:20` |
+| `<topic>/group/<screen>/select`, `…/rotate` | a template screen's member (or `Rotate`) and rotate seconds |
+| `<topic>/control/<screen>/<setting>/set` | an exposed screen setting (see the [guide](docs/GUIDE.md#mqtt-for-exposed-settings)) |
 | `<topic>/status` | `online` / `offline` (pixel2mqtt sets this) |
 | `pixel2mqtt/bridge/state` | `online` / `offline` (last will) |
 
@@ -211,8 +230,9 @@ through a reverse proxy without adding authentication there.
   - sounds are stored as they are, and the display decodes them on first play.
 
 ## Tests
-`python tests/test_offline.py`, `python -m tests.test_bindings`, `node tests/test_scene.js` and
-`node tests/test_screens.js` need nothing else and run in CI. `test_screens.js` also checks the screen renderer pixel
+`python tests/test_offline.py`, `python -m tests.test_bindings` (and `test_groups`, `test_controls`,
+`test_forecast`, `test_history`), `node tests/test_scene.js` and `node tests/test_screens.js` need nothing else
+(CI runs `test_offline` and `test_scene`). `test_screens.js` also checks the screen renderer pixel
 for pixel against pixeld's golden frames when a pixeld-h6631 checkout sits next to this one.
 `tests/verify_stock_scenes.py <copy of /usr/res>` (local, needs the stock files) checks that every built-in animation
 opened as layers bakes byte-identically.

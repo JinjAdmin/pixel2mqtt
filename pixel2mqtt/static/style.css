@@ -296,7 +296,8 @@ button.on { border-color: var(--accent); }
 .valrow .vname { text-align: left; font: 13px ui-monospace, Consolas, monospace; background: transparent; border: 0; padding: 0; color: var(--text); }
 .valrow .vwhat { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .valrow .vlive { margin-left: auto; font: 12px ui-monospace, Consolas, monospace; color: var(--ok); white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
-.valrow .row input { flex: 1; min-width: 0; }
+.valrow .row { flex-wrap: wrap; }
+.valrow .row input { flex: 1 0 100%; min-width: 0; }   /* the sample gets its own line; the buttons go under it */
 dialog.picker { width: min(860px, 96vw); max-height: 86vh; padding: 0; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--r); }
 dialog.picker::backdrop { background: #0009; }
 .pk-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
