@@ -33,15 +33,15 @@ broker and Home Assistant for any number of displays. You get:
 screens, exposing settings, animations, icons and playlists.
 
 ### Screenshots
-**Screen editor**: the 3D printer example mid-print, with sample values. Elements on the left, the 52×32 preview in
+**Screen editor**: the 3D printer example mid-print (56 %, layer 96 of 180), with sample values. Elements on the left, the 52×32 preview in
 the middle (the print head rises as the part grows), the selected element's settings on the right.
 
 <img src="docs/img/screen-editor.png" alt="Screen editor: a 3D printer screen at 56 % with the print name, a printer drawing, a progress bar, time left and layers" width="900">
 
-**Sources**: each value the screen uses, bound to Home Assistant (here, to the current member of a group of tickers),
+**Sources**: each value the 3D printer screen uses, bound to a Home Assistant entity's state or one of its attributes,
 with a sample for the preview.
 
-<img src="docs/img/sources.png" alt="Sources tab: values bound to a group's attributes, each with a sample" width="340">
+<img src="docs/img/sources.png" alt="Sources tab: printer values bound to sensor states and an attribute, each with a sample" width="330">
 
 **Animation editor**: layers, frames, motion and opacity, with the colour palette and scene controls on the right.
 

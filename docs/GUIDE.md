@@ -79,7 +79,7 @@ Screens need pixeld-h6631 with screen support.
 
 ## Binding data: the Sources tab
 
-![The Sources tab with group bindings](img/sources.png)
+![The Sources tab: the 3D printer's values bound to states and an attribute](img/sources.png)
 
 **Sources** binds Home Assistant entities to the named values a screen uses. A name like `market.price` can appear
 in text, colours and conditions, and updates when the entity changes. Every name the screen uses is listed:
