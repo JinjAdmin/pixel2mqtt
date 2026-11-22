@@ -186,6 +186,18 @@ One screen shows any of several similar entities, e.g. every stock ticker.
 The screenshots here come from one project, **Ringworld**: a ring-shaped world turning in front of its gas giant,
 with a dropship heading in. Its recipe is in the [reference](#worked-example-ringworld).
 
+### Built-in artwork and Govee app scenes
+In the **Library**, **Import built-in animations & icons** converts the animations and icons inside your display's own firmware
+(59 animations including 4 clock scenes, plus about 85 icons) into normal files. The same button imports scenes the
+Govee app sent to the display before the custom firmware was installed, including community Share Space scenes.
+The app keeps no titles on the device, so they arrive as `App <code>`: rename them with **Aa**, and later imports
+keep your names. Copies of built-ins are skipped. (Needs pixeld-h6631 v0.2.0 or newer.)
+
+Opening a built-in scene in the editor (Coffee Cat, Banana, Lighthouse, Starry Night, …) gives you its real layers
+and motion settings, ready to remix. Sent unchanged, it reproduces the stock animation exactly.
+
+pixel2mqtt contains no artwork: it reads the files from your own display and writes the results back to it.
+
 ### Tools
 
 Hover a tool for its settings (on touch screens, tap it again). Each tool keeps its own settings.
