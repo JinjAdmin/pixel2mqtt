@@ -5,7 +5,7 @@ const PW = 52, PH = 32, FRAME = PW * PH * 3;
 // LEDs as the panel shows them: square dots with a black gap, unlit (black) LEDs very dark grey. Below 3 px per LED
 // there's no room for a gap, so plain pixels. px: RGB (stride 3) or RGBA (stride 4), w x h LEDs, s px per LED.
 const LED_OFF = 22;   // #161616
-const ledGap = s => Math.max(1, Math.round(s / 5));   // the black gap: about a fifth of the LED pitch
+const ledGap = s => Math.max(1, Math.round(s / 8));   // the black gap: about an eighth of the LED pitch
 function drawLEDs(g, px, stride, w, h, s, x0 = 0, y0 = 0) {
   if (s < 3) {
     const img = new ImageData(w, h);
