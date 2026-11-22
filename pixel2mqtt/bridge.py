@@ -218,6 +218,7 @@ class Manager:
             self.mqtt.subscribe(d.topic + "/status")   # to undo a stray "offline" (see _on_message)
             self.mqtt.subscribe(d.topic + "/group/+/select")   # screen groups (template screens): HA select / number
             self.mqtt.subscribe(d.topic + "/group/+/rotate")
+            self.mqtt.subscribe(d.topic + "/control/+/+/set")   # HA controls (screen settings)
         d.start()
         return d
 
@@ -254,6 +255,11 @@ class Manager:
                 if payload != b"online" and d.online:
                     log.info("%s: status was set to %r by someone else; republishing online", d.name, payload)
                     self.mqtt.publish(d.topic + "/status", "online", retain=True)
+                return
+            if self.bindings and topic.startswith(d.topic + "/control/"):
+                hit = self.bindings.on_control(d, topic)
+                if hit:
+                    self.bindings.set_control(d.id, hit[0], hit[1], payload.decode("utf-8", "replace"))
                 return
             if self.bindings and topic.startswith(d.topic + "/group/"):
                 hit = self.bindings.on_command(d, topic)

@@ -233,7 +233,7 @@ def make_handler(mgr, config):
             if p == ["screens"] and m == "GET":   # what the display reports: errors, visibility, missing values
                 return self.send(200, api.screens())
             if p == ["bindings"] and m == "GET":
-                return self.send(200, {"screens": mgr.bindings.screens(d.id), "groups": mgr.bindings.groups(d.id), "ha": mgr.ha.status()})
+                return self.send(200, {"screens": mgr.bindings.screens(d.id), "groups": mgr.bindings.groups(d.id), "controls": {k: v.get("list", []) for k, v in mgr.bindings.controls(d.id).items()}, "ha": mgr.ha.status()})
             if p[:1] == ["screens"] and len(p) == 2:
                 name = formats.safe_name(p[1])
                 if not name:
@@ -246,7 +246,7 @@ def make_handler(mgr, config):
                     if len(scr) > 16384:
                         raise ValueError("screen file larger than 16 KB")
                     api.put_file("screens", name + ".scr", scr)
-                    mgr.bindings.activate(d.id, name, b.get("bindings") or {}, b.get("group"))
+                    mgr.bindings.activate(d.id, name, b.get("bindings") or {}, b.get("group"), b.get("controls"), scr.decode("utf-8"))
                     log.info("sent screen %s (%d bytes, %d bindings) to %s", name, len(scr), len(b.get("bindings") or {}), d.name)
                     return self.send(200, {"ok": True, "name": name})
                 if m == "DELETE":

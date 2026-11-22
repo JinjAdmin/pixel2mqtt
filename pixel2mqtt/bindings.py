@@ -1,7 +1,8 @@
 """Value bindings for info screens: Home Assistant entities -> named values on the displays.
 
 data/bindings.json: {"displays": {<display id>: {"screens": {<screen name>: {<value name>: spec}},
-                                                 "groups": {<screen name>: group}}}}
+                                                 "groups": {<screen name>: group},
+                                                 "controls": {<screen name>: {"scr": text, "list": [control]}}}}}
 spec:  {"entity": "sensor.x", "kind": "state" | "attr" | "history", "attr": "...", "hours": 24, "points": 32}
        {"kind": "const", "value": "BTC"}
        {"kind": "group", "source": "state" | "attr" | "history", "attr": "...", "hours", "points", "fmt": "..."}
@@ -23,6 +24,8 @@ import os
 import re
 import threading
 import time
+
+from . import controls as ctl
 
 log = logging.getLogger("bindings")
 MAX_MSG = 8192   # pixeld takes up to 16 KB per values message (HTTP and MQTT); stay well under
@@ -240,6 +243,11 @@ class Bindings:
                 self.data = json.loads(self.path.read_text(encoding="utf-8"))
             except ValueError:
                 log.warning("bindings.json is unreadable; starting empty")
+        for d in self.data.get("displays", {}).values():   # older versions could store a history window as text
+            for b in d.get("screens", {}).values():
+                for spec in b.values():
+                    if "hours" in spec:
+                        spec["hours"] = ctl.parse_hours(spec["hours"]) or 24
         self.sent = {}       # display id -> {name: last value sent}
         self.pending = {}    # display id -> {name: value} waiting to go out
         self.hist = {}       # (entity, attr, hours, points) -> (fetched_at, list)
@@ -248,6 +256,7 @@ class Bindings:
         self._full_at = {}               # display id -> time of the last full resend
         self.gidx, self.gnext = {}, {}   # (display, screen) -> rotation index / time of the next step
         self._disc = {}                  # (display, screen) -> last discovery payloads published
+        self._jobs, self._jobs_lock, self._jobs_ev = {}, threading.Lock(), threading.Event()   # slow work, off the MQTT thread
 
     # ------------------------------------------------------------------ store
     def _save(self):
@@ -307,8 +316,9 @@ class Bindings:
             clean[name] = s
         return clean
 
-    def activate(self, dev_id, screen, bindings: dict, group=None):
+    def activate(self, dev_id, screen, bindings: dict, group=None, controls=None, scr=None):
         clean = self._clean_bindings(bindings)
+        cl = ctl.clean_controls(controls)
         with self.lock:
             before = set(self.active(dev_id))
             d = self.data["displays"].setdefault(dev_id, {"screens": {}})
@@ -318,39 +328,44 @@ class Bindings:
                 d.setdefault("groups", {})[screen] = g
             else:
                 d.get("groups", {}).pop(screen, None)
+            cl = [c for c in cl if not c["param"].startswith("value.") or self._is_history(clean.get(c["param"][6:-6], {}))]
+            if cl:
+                d.setdefault("controls", {})[screen] = {"scr": scr or "", "list": cl}
+            else:
+                d.get("controls", {}).pop(screen, None)
             self._save()
             self._drop_unused(dev_id, before)
-        if not g:
-            self._unpublish(dev_id, screen)
-        self.publish_groups(dev_id)
+        self.publish_groups(dev_id)   # also clears entities the screen no longer has
         self.refresh(dev_id, force=True)
 
     def deactivate(self, dev_id, screen):
+        self._unpublish(dev_id, screen)
         with self.lock:
             before = set(self.active(dev_id))
             d = self._disp(dev_id)
             d.get("screens", {}).pop(screen, None)
             d.get("groups", {}).pop(screen, None)
+            d.get("controls", {}).pop(screen, None)
             self._save()
             self._drop_unused(dev_id, before)
-        self._unpublish(dev_id, screen)
 
     def rename_screen(self, dev_id, old, new):
         with self.lock:
             d = self._disp(dev_id)
             if old not in d.get("screens", {}):
                 return
+        self._unpublish(dev_id, old)
+        with self.lock:
             d["screens"][new] = d["screens"].pop(old)
-            g = d.get("groups", {}).pop(old, None)
-            if g:
-                d["groups"][new] = g
+            for k in ("groups", "controls"):
+                v = d.get(k, {}).pop(old, None)
+                if v:
+                    d[k][new] = v
             self._save()
-        if g:
-            self._unpublish(dev_id, old)
-            self.publish_groups(dev_id)
+        self.publish_groups(dev_id)
 
     def forget_display(self, dev_id):
-        for screen in list(self.groups(dev_id)):
+        for screen in list(self.screens(dev_id)):
             self._unpublish(dev_id, screen)
         with self.lock:
             self.data["displays"].pop(dev_id, None)
@@ -413,7 +428,7 @@ class Bindings:
             self._save()
         self.gnext[(dev_id, screen)] = time.time() + g["rotate"]
         self._publish_state(dev_id, screen)
-        self.refresh_screen(dev_id, screen)
+        self.later(("member", dev_id, screen), lambda: self.refresh_screen(dev_id, screen))
 
     def set_rotate(self, dev_id, screen, secs):
         g = self.groups(dev_id).get(screen)
@@ -442,9 +457,132 @@ class Bindings:
                 if now >= self.gnext[k]:
                     self.gidx[k] = self.gidx.get(k, 0) + 1
                     self.gnext[k] = now + g["rotate"]
-                    self.refresh_screen(dev_id, screen)
+                    self.later(("member", dev_id, screen), lambda d=dev_id, s=screen: self.refresh_screen(d, s))
 
-    # ------------------------------------------------------------------ Home Assistant discovery (select + number per group)
+    # ------------------------------------------------------------------ HA controls (screen settings as HA entities)
+    def controls(self, dev_id, screen=None):
+        c = self._disp(dev_id).get("controls", {})
+        return c if screen is None else c.get(screen, {}).get("list", [])
+
+    @staticmethod
+    def _is_history(spec):
+        return spec.get("kind") == "history" or (spec.get("kind") == "group" and spec.get("source") == "history")
+
+    def control_value(self, dev_id, screen, c):
+        if c["param"].startswith("value."):
+            spec = self.screens(dev_id).get(screen, {}).get(c["param"][6:-6], {})
+            return spec.get("hours")
+        return c.get("value")
+
+    def set_control(self, dev_id, screen, param, raw, upload=True):
+        """A command from HA (or the API): validate, store, apply right away, publish the new state."""
+        with self.lock:
+            entry = self._disp(dev_id).get("controls", {}).get(screen)
+            c = next((c for c in (entry or {}).get("list", []) if c["param"] == param), None)
+            v = ctl.coerce(c, raw) if c else None
+            if v is None:
+                log.info("%s: ignored %s = %r", screen, param, raw)
+                return False
+            if param.startswith("value."):
+                spec = self.screens(dev_id).get(screen, {}).get(param[6:-6])
+                if not spec or not self._is_history(spec):
+                    return False
+                spec["hours"] = v   # a number (coerce converts '7d' etc.)
+            else:
+                c["value"] = v
+                entry["scr"] = ctl.patch_scr(entry["scr"], c, v)
+                scr = entry["scr"]
+            self._save()
+        self._publish_state(dev_id, screen)
+        if param.startswith("value."):
+            name = param[6:-6]
+            self.later(("refresh", dev_id, screen, name),
+                       lambda: self.refresh(dev_id, force=True, screens={screen}, only=lambda s, e: s is self.screens(dev_id).get(screen, {}).get(name)))
+        elif upload and scr.startswith("PXS1"):
+            self.later(("upload", dev_id, screen), lambda: self._upload(dev_id, screen))
+        return True
+
+    def _upload(self, dev_id, screen):
+        d, scr = self.mgr.displays.get(dev_id), self.controls(dev_id).get(screen, {}).get("scr", "")
+        if d is None or not scr.startswith("PXS1"):
+            return
+        try:
+            d.api.put_file("screens", screen + ".scr", scr.encode("utf-8"))   # the latest text, however many commands came in
+        except Exception as e:  # noqa: BLE001
+            log.warning("%s: could not send %s: %s", getattr(d, "name", dev_id), screen, e)
+
+    # ------------------------------------------------------------------ worker (never block the MQTT thread)
+    def later(self, key, fn):
+        """Run fn on the worker thread. A job with the same key still waiting is replaced (the latest command wins)."""
+        with self._jobs_lock:
+            self._jobs.pop(key, None)
+            self._jobs[key] = fn
+        self._jobs_ev.set()
+
+    def _job_loop(self):
+        while not self._stop.is_set():
+            self._jobs_ev.wait(1.0)
+            while True:
+                with self._jobs_lock:
+                    if not self._jobs:
+                        self._jobs_ev.clear()
+                        break
+                    key = next(iter(self._jobs))
+                    fn = self._jobs.pop(key)
+                try:
+                    fn()
+                except Exception:  # noqa: BLE001
+                    log.exception("job %s failed", key[:3])
+
+    def _entities(self, d, screen):
+        """Every HA entity of a screen: [(config topic, config, state topic, state, command topic)].
+        A group's member select and rotate number are built-in controls; they keep their original ids and topics."""
+        out, did = [], d.id
+        dev = {"ids": d.dev_ids}
+        avty = {"avty": [{"t": self.mgr.bridge_state_topic}, {"t": d.topic + "/status"}], "avty_mode": "all"}
+        g = self.groups(did).get(screen)
+        if g:
+            t = self._topics(d, screen)
+            labels = self.option_labels(self.members(did, screen))
+            sel = g.get("selected", ROTATE)
+            cur = ROTATE_LABEL if sel == ROTATE else next((lab for lab, eid in labels if eid == sel), ROTATE_LABEL)
+            out.append((t["select_cfg"], dict({"name": g["name"], "uniq_id": f"{d.uid}_grp_{slug(screen)}", "cmd_t": t["select_cmd"], "stat_t": t["select_state"],
+                                               "ops": [ROTATE_LABEL] + [lab for lab, _ in labels], "icon": "mdi:format-list-bulleted", "dev": dev}, **avty),
+                        t["select_state"], cur, t["select_cmd"]))
+            out.append((t["number_cfg"], dict({"name": f"{g['name']} rotate seconds", "uniq_id": f"{d.uid}_grp_{slug(screen)}_rotate", "cmd_t": t["rotate_cmd"],
+                                               "stat_t": t["rotate_state"], "min": 2, "max": 600, "step": 1, "unit_of_meas": "s", "mode": "box",
+                                               "icon": "mdi:timer-sync-outline", "ent_cat": "config", "dev": dev}, **avty),
+                        t["rotate_state"], str(g["rotate"]), t["rotate_cmd"]))
+        for c in self.controls(did, screen):
+            ps = slug(c["param"])
+            base = f"{d.topic}/control/{slug(screen)}/{ps}"
+            cfg = dict({"name": c["name"], "uniq_id": f"{d.uid}_scr_{slug(screen)}_{ps}", "cmd_t": base + "/set", "stat_t": base + "/state", "dev": dev}, **avty)
+            if c["type"] == "number":
+                cfg.update(min=c["min"], max=c["max"], step=c["step"], mode="box")
+                if c.get("unit"):
+                    cfg["unit_of_meas"] = c["unit"]
+            elif c["type"] == "select":
+                cur = ctl.state_text(c, self.control_value(did, screen, c))
+                cfg["ops"] = c["options"] + ([cur] if cur and cur not in c["options"] else [])
+            elif c["type"] == "text":
+                cfg["max"] = 63
+            out.append((f"{self.mgr.disc_prefix}/{c['type']}/{d.uid}/scr_{slug(screen)}_{ps}/config", cfg,
+                        base + "/state", ctl.state_text(c, self.control_value(did, screen, c)), base + "/set"))
+        return out
+
+    def on_control(self, d, topic):
+        """<display topic>/control/<screen slug>/<param slug>/set -> (screen, param) if it's ours."""
+        parts = topic[len(d.topic) + 1:].split("/")
+        if len(parts) != 4 or parts[0] != "control" or parts[3] != "set":
+            return None
+        for screen, entry in self.controls(d.id).items():
+            if slug(screen) == parts[1]:
+                for c in entry.get("list", []):
+                    if slug(c["param"]) == parts[2]:
+                        return screen, c["param"]
+        return None
+
+    # ------------------------------------------------------------------ Home Assistant discovery
     def _topics(self, d, screen):
         base = f"{d.topic}/group/{slug(screen)}"
         return {"select_cmd": base + "/select", "select_state": base + "/selected",
@@ -453,6 +591,7 @@ class Bindings:
                 "number_cfg": f"{self.mgr.disc_prefix}/number/{d.uid}/grp_{slug(screen)}_rotate/config"}
 
     def publish_groups(self, dev_id=None):
+        """Discovery + state for every screen's HA entities (group built-ins and controls); clears ones that are gone."""
         m = getattr(self.mgr, "mqtt", None)
         if not m or not getattr(m, "connected", False):
             return
@@ -460,40 +599,43 @@ class Bindings:
             d = self.mgr.displays.get(did)
             if not d or not getattr(d, "dev_ids", None):
                 continue
-            for screen, g in list(self.groups(did).items()):
-                t = self._topics(d, screen)
-                opts = [ROTATE_LABEL] + [lab for lab, _ in self.option_labels(self.members(did, screen))]
-                dev = {"ids": d.dev_ids}
-                avty = {"avty": [{"t": self.mgr.bridge_state_topic}, {"t": d.topic + "/status"}], "avty_mode": "all"}
-                sel = dict({"name": g["name"], "uniq_id": f"{d.uid}_grp_{slug(screen)}", "cmd_t": t["select_cmd"], "stat_t": t["select_state"],
-                            "ops": opts, "icon": "mdi:format-list-bulleted", "dev": dev}, **avty)
-                num = dict({"name": f"{g['name']} rotate seconds", "uniq_id": f"{d.uid}_grp_{slug(screen)}_rotate", "cmd_t": t["rotate_cmd"],
-                            "stat_t": t["rotate_state"], "min": 2, "max": 600, "step": 1, "unit_of_meas": "s", "mode": "box",
-                            "icon": "mdi:timer-sync-outline", "ent_cat": "config", "dev": dev}, **avty)
-                payloads = (json.dumps(sel), json.dumps(num))
-                if self._disc.get((did, screen)) != payloads:
-                    m.publish(t["select_cfg"], payloads[0], retain=True)
-                    m.publish(t["number_cfg"], payloads[1], retain=True)
-                    self._disc[(did, screen)] = payloads
-                self._publish_state(did, screen)
+            screens = set(self.groups(did)) | set(self.controls(did)) | {s for (x, s) in self._disc if x == did}
+            for screen in screens:
+                ents = self._entities(d, screen) if screen in self.screens(did) else []
+                now = {cfg_t: (json.dumps(cfg), st_t) for cfg_t, cfg, st_t, _, _ in ents}
+                old = self._disc.get((did, screen), {})
+                for cfg_t, (payload, _) in now.items():
+                    if old.get(cfg_t, (None,))[0] != payload:
+                        m.publish(cfg_t, payload, retain=True)
+                for cfg_t, (_, st_t) in old.items():
+                    if cfg_t not in now:
+                        m.publish(cfg_t, "", retain=True)
+                        m.publish(st_t, "", retain=True)
+                if now:
+                    self._disc[(did, screen)] = now
+                else:
+                    self._disc.pop((did, screen), None)
+                for _, _, st_t, state, _ in ents:
+                    m.publish(st_t, state, retain=True)
 
     def _publish_state(self, dev_id, screen):
-        m, d, g = getattr(self.mgr, "mqtt", None), self.mgr.displays.get(dev_id), self.groups(dev_id).get(screen)
-        if not m or not getattr(m, "connected", False) or not d or not g:
+        m, d = getattr(self.mgr, "mqtt", None), self.mgr.displays.get(dev_id)
+        if not m or not getattr(m, "connected", False) or not d or not getattr(d, "dev_ids", None):
             return
-        t = self._topics(d, screen)
-        sel = g.get("selected", ROTATE)
-        label = ROTATE_LABEL if sel == ROTATE else next((lab for lab, eid in self.option_labels(self.members(dev_id, screen)) if eid == sel), ROTATE_LABEL)
-        m.publish(t["select_state"], label, retain=True)
-        m.publish(t["rotate_state"], str(g["rotate"]), retain=True)
+        for _, _, st_t, state, _ in self._entities(d, screen):
+            m.publish(st_t, state, retain=True)
 
     def _unpublish(self, dev_id, screen):
         m, d = getattr(self.mgr, "mqtt", None), self.mgr.displays.get(dev_id)
-        self._disc.pop((dev_id, screen), None)
-        if m and getattr(m, "connected", False) and d:
-            t = self._topics(d, screen)
-            for k in ("select_cfg", "number_cfg", "select_state", "rotate_state"):
-                m.publish(t[k], "", retain=True)
+        old = self._disc.pop((dev_id, screen), {})
+        if not m or not getattr(m, "connected", False) or not d:
+            return
+        topics = {cfg_t: st_t for cfg_t, (_, st_t) in old.items()}
+        if getattr(d, "dev_ids", None):
+            topics.update({cfg_t: st_t for cfg_t, _, st_t, _, _ in self._entities(d, screen)})
+        for cfg_t, st_t in topics.items():
+            m.publish(cfg_t, "", retain=True)
+            m.publish(st_t, "", retain=True)
 
     def on_command(self, d, topic):
         """<display topic>/group/<slug>/select|rotate -> (screen, kind) if it's ours, else None."""
@@ -561,18 +703,21 @@ class Bindings:
         if not self.ha.connected and any(self._needs_ha(s) for s in self.active(dev_id).values()):
             return   # without HA only fixed values can be computed; wait (an HA reconnect resends everything)
         with self.lock:
-            sent, p = self.sent.setdefault(dev_id, {}), self.pending.setdefault(dev_id, {})
+            todo = []
             for screen, b in list(self.screens(dev_id).items()):
                 if screens is not None and screen not in screens:
                     continue
                 member = self.current(dev_id, screen) if screen in self.groups(dev_id) else None
-                for name, spec in b.items():
+                for name, spec in list(b.items()):
                     ent = member if spec.get("kind") == "group" else spec.get("entity")
-                    if only is not None and not only(spec, ent):
-                        continue
-                    v = self.compute(spec, entity=ent)
-                    if force or sent.get(name, UNSET) != v:
-                        p[name] = v
+                    if only is None or only(spec, ent):
+                        todo.append((name, dict(spec), ent))
+        vals = [(name, self.compute(spec, entity=ent)) for name, spec, ent in todo]   # may fetch history: no lock held
+        with self.lock:
+            sent, p = self.sent.setdefault(dev_id, {}), self.pending.setdefault(dev_id, {})
+            for name, v in vals:
+                if force or sent.get(name, UNSET) != v:
+                    p[name] = v
 
     def refresh_screen(self, dev_id, screen):
         """A group's member changed: send all of that screen's group values together."""
@@ -592,6 +737,7 @@ class Bindings:
             self.ha.on_registry = []
         self.ha.on_registry.append(self.publish_groups)
         threading.Thread(target=self._flush_loop, name="values", daemon=True).start()
+        threading.Thread(target=self._job_loop, name="bindings-jobs", daemon=True).start()
         threading.Thread(target=self._history_loop, name="history", daemon=True).start()
 
     def stop(self):
